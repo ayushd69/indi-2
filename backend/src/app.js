@@ -1,0 +1,28 @@
+const cors = require('cors')
+const express = require('express')
+const rateLimit = require('express-rate-limit')
+const helmet = require('helmet')
+const { frontendUrl } = require('./config/env')
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler')
+const healthRouter = require('./routes/health')
+const authRouter = require('./routes/auth')
+const ticketRouter = require('./routes/tickets')
+const resourceRouter = require('./routes/resources')
+const aiRouter = require('./routes/ai')
+
+const app = express()
+
+app.disable('x-powered-by')
+app.use(helmet())
+app.use(cors({ origin: frontendUrl }))
+app.use(express.json({ limit: '1mb' }))
+app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300 }))
+app.use('/api/health', healthRouter)
+app.use('/api/auth', authRouter)
+app.use('/api/tickets', ticketRouter)
+app.use('/api/ai', aiRouter)
+app.use('/api', resourceRouter)
+app.use(notFoundHandler)
+app.use(errorHandler)
+
+module.exports = app

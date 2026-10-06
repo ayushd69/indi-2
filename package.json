@@ -1,0 +1,17 @@
+{
+    "name": "servicedesk-pro",
+    "version": "1.0.0",
+    "private": true,
+    "description": "ServiceDesk Pro IT helpdesk and asset management platform",
+    "scripts": {
+        "dev": "concurrently -k -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
+        "dev:api": "npm --prefix backend run dev",
+        "dev:web": "npm --prefix frontend run dev",
+        "build": "npm --prefix frontend run build",
+        "lint": "npm --prefix frontend run lint",
+        "start": "npm --prefix backend start"
+    },
+    "devDependencies": {
+        "concurrently": "^9.2.1"
+    }
+}
