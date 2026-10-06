@@ -57,9 +57,10 @@ The System Admin account has dedicated credentials. All other demo accounts use 
 ## Working modules
 
 - JWT login, admin-provisioned user accounts with bcrypt, five roles, department-scoped ticket access, and role-aware navigation.
-- Ticket creation, search/filter, unique yearly IDs, assignment, status lifecycle, comments, internal notes, work logs, escalation, SLA deadlines and history.
+- Ticket creation, search/filter, unique yearly IDs, manager assignment requests with technician acceptance/decline reasons, role-specific status lifecycle, comments, internal notes, shared work-progress logs, escalation, SLA deadlines and history.
 - SLA at-risk alerts and breach escalation checked once per minute; policies are configurable by priority.
-- Asset, vendor and knowledge article CRUD, asset assignment/lifecycle endpoints, notifications, admin audit trail and CSV ticket reports.
+- Temporary asset loans: employees can request available equipment with a reason and optional repair ticket; Asset Managers approve/decline, issue items with timestamps, and confirm returns before assets become available again. Managers can review department assignments and loan history.
+- Asset, vendor and knowledge article CRUD, asset lifecycle endpoints, notifications, admin audit trail and CSV ticket reports.
 - Role-scoped dashboards with ticket status/priority charts; AI classification suggestions are review-only and can use `AI_API_KEY`, `AI_API_URL` and `AI_MODEL` from the backend environment.
 - Helmet, CORS, rate limiting, input checks, centralized errors and pagination on collection APIs.
 

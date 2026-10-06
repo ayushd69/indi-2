@@ -6,7 +6,7 @@ import api from './api'
 const navigation = [
     { id: 'Overview', icon: LayoutDashboard, roles: '*' },
     { id: 'Tickets', icon: LifeBuoy, roles: '*' },
-    { id: 'Assets', icon: Boxes, roles: ['System Admin', 'Asset Manager', 'Employee'] },
+    { id: 'Assets', icon: Boxes, roles: ['System Admin', 'IT Manager', 'Asset Manager', 'Employee'] },
     { id: 'Knowledge', icon: BookOpen, roles: '*' },
     { id: 'Vendors', icon: BriefcaseBusiness, roles: ['System Admin', 'Asset Manager'] },
     { id: 'People', icon: Users, roles: ['System Admin'] },
@@ -29,6 +29,7 @@ function App() {
     const [user, setUser] = useState(null)
     const [page, setPage] = useState('Overview')
     const [tickets, setTickets] = useState([])
+    const [assetRequests, setAssetRequests] = useState([])
     const [stats, setStats] = useState(null)
     const [items, setItems] = useState([])
     const [notifications, setNotifications] = useState([])
@@ -52,6 +53,8 @@ function App() {
         if (page === 'Overview' && ['System Admin', 'IT Manager', 'Asset Manager'].includes(user.role)) requests.push(api.get('/reports/summary').catch(() => ({ data: null })))
         if (page === 'Notifications') requests.push(api.get('/notifications'))
         if (apiPath[page]) requests.push(api.get(`/${apiPath[page]}?limit=100`))
+        const assetRequestsIndex = page === 'Assets' ? requests.length : -1
+        if (page === 'Assets') requests.push(api.get('/asset-requests'))
         Promise.all(requests).then((responses) => {
             setStats(responses[0].data)
             setTickets(responses[1].data.items)
@@ -62,6 +65,7 @@ function App() {
                 if (page === 'Notifications') setNotifications(resource.data.items)
                 else setItems(resource.data.items)
             }
+            if (assetRequestsIndex >= 0) setAssetRequests(responses[assetRequestsIndex].data.items)
         }).catch((requestError) => setError(requestError.response?.data?.error?.message || 'Could not load this view. Check the API connection.'))
             .finally(() => setBusy(false))
     }, [user, page])
@@ -105,6 +109,7 @@ function App() {
         const [{ data: ticketData }, { data: dashboardData }] = await Promise.all([api.get('/tickets?limit=100'), api.get('/dashboard')])
         setTickets(ticketData.items)
         setStats(dashboardData)
+        setSelected((current) => current ? ticketData.items.find((item) => item._id === current._id) || current : null)
     }
 
     async function changeStatus(ticket, status) {
@@ -145,6 +150,56 @@ function App() {
             setItems(data.items)
             setToast(`${item.name} moved to ${status}`)
         } catch (requestError) { setError(requestError.response?.data?.error?.message || 'Asset update failed') }
+    }
+
+    async function refreshAssets() {
+        const [{ data: assets }, { data: requests }] = await Promise.all([api.get('/assets?limit=100'), api.get('/asset-requests')])
+        setItems(assets.items)
+        setAssetRequests(requests.items)
+    }
+
+    async function requestAsset(form) {
+        try {
+            await api.post('/asset-requests', form)
+            await refreshAssets()
+            setToast('Temporary asset request sent to the Asset Manager')
+            return true
+        } catch (requestError) {
+            setError(requestError.response?.data?.error?.message || 'Could not request this asset')
+            return false
+        }
+    }
+
+    async function reviewAssetRequest(request, decision) {
+        const reason = decision === 'decline' ? window.prompt('Reason for declining this asset request (optional):') : ''
+        if (reason === null) return
+        try {
+            await api.patch(`/asset-requests/${request._id}/decision`, { decision, reason })
+            await refreshAssets()
+            setToast(decision === 'approve' ? 'Asset approved and issued to the employee' : 'Asset request declined')
+        } catch (requestError) {
+            setError(requestError.response?.data?.error?.message || 'Could not review asset request')
+        }
+    }
+
+    async function requestAssetReturn(request) {
+        try {
+            await api.patch(`/asset-requests/${request._id}/return`)
+            await refreshAssets()
+            setToast('Return request sent to the Asset Manager')
+        } catch (requestError) {
+            setError(requestError.response?.data?.error?.message || 'Could not request asset return')
+        }
+    }
+
+    async function receiveAssetReturn(request) {
+        try {
+            await api.patch(`/asset-requests/${request._id}/receive`)
+            await refreshAssets()
+            setToast('Asset return received and item is available again')
+        } catch (requestError) {
+            setError(requestError.response?.data?.error?.message || 'Could not receive asset return')
+        }
     }
 
     async function markAllRead() {
@@ -194,7 +249,8 @@ function App() {
                     {error && <div className="mb-5 flex items-center gap-2 rounded-md border border-[#f0d2cf] bg-[#fff8f7] px-4 py-3 text-sm text-[#a4443d]"><AlertCircle size={16} />{error}<button className="ml-auto" onClick={() => setError('')} aria-label="Dismiss"><X size={15} /></button></div>}
                     {page === 'Overview' && <Dashboard user={user} stats={stats} tickets={tickets} busy={busy} onCreate={user.role === 'Employee' ? () => setModal('ticket') : null} onSelect={setSelected} onNavigate={setPage} />}
                     {page === 'Tickets' && <TicketsView tickets={visibleTickets} busy={busy} onCreate={user.role === 'Employee' ? () => setModal('ticket') : null} onSelect={setSelected} />}
-                    {apiPath[page] && <ResourceView title={page} items={items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase()))} busy={busy} onCreate={() => setModal('resource')} allowUserCreate={user.role === 'System Admin'} canDeleteUsers={user.role === 'System Admin'} onUserDelete={deleteUser} canManageAssets={['System Admin', 'Asset Manager'].includes(user.role)} onAssetLifecycle={changeAssetLifecycle} />}
+                    {page === 'Assets' && <AssetsView user={user} items={items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase()))} requests={assetRequests} tickets={tickets} busy={busy} onCreate={() => setModal('resource')} onRequest={requestAsset} onDecision={reviewAssetRequest} onReturn={requestAssetReturn} onReceive={receiveAssetReturn} onLifecycle={changeAssetLifecycle} />}
+                    {apiPath[page] && page !== 'Assets' && <ResourceView title={page} items={items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase()))} busy={busy} onCreate={() => setModal('resource')} allowUserCreate={user.role === 'System Admin'} canDeleteUsers={user.role === 'System Admin'} onUserDelete={deleteUser} />}
                     {page === 'Notifications' && <NotificationsView items={notifications} onReadAll={markAllRead} />}
                     {page === 'Reports' && <ReportsView tickets={tickets} stats={stats} />}
                     {page === 'Profile' && <ProfileView user={user} />}
@@ -246,16 +302,37 @@ function Dashboard({ user, stats, tickets, busy, onCreate, onSelect, onNavigate 
     const statusData = stats?.ticketCounts?.map(({ _id, count }) => ({ name: _id, count })) || []
     const priorityData = stats?.priorityCounts?.map(({ _id, count }) => ({ name: _id, value: count })) || []
     const latest = tickets.slice(0, 5)
+    const statusSummary = {
+        'System Admin': ['Organization-wide status distribution', 'All service desk requests'],
+        'IT Manager': ['Department status distribution', 'Requests in your department'],
+        Technician: ['My work status', 'Requests assigned to you'],
+        Employee: ['My request status', 'Updates on your requests'],
+        'Asset Manager': ['Service desk status', 'Requests across the organization'],
+    }[user.role] || ['Request status', 'Current workload']
+    const metricLabels = {
+        'System Admin': ['All requests', 'Open requests', 'Assets', 'Active users'],
+        'IT Manager': ['Department requests', 'Need attention', 'Assets', 'Unread alerts'],
+        Technician: ['My assigned requests', 'Need attention', 'Assets tracked', 'Unread alerts'],
+        Employee: ['My requests', 'Need attention', 'My assets', 'Unread alerts'],
+        'Asset Manager': ['Service requests', 'Need attention', 'Assets', 'Unread alerts'],
+    }[user.role] || ['Total requests', 'Open requests', 'Assets', 'Unread alerts']
+    const ticketScopeNote = {
+        'System Admin': 'Across the organization',
+        'IT Manager': 'In your department',
+        Technician: 'Assigned to you',
+        Employee: 'Submitted by you',
+        'Asset Manager': 'Across the organization',
+    }[user.role] || 'Across your access scope'
     return <>
         <PageHeading eyebrow={user.department?.name || user.role} title={roleHome[user.role] || 'Workspace overview'} description={`Good day, ${user.name.split(' ')[0]}. Here is the current service desk activity.`} action={onCreate && <ActionButton onClick={onCreate}><Plus size={15} />New request</ActionButton>} />
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <StatCard label="Total requests" value={stats?.totalTickets ?? '—'} icon={LifeBuoy} note="Across your access scope" />
-            <StatCard label="Open requests" value={stats?.openTickets ?? '—'} icon={Activity} note="Need attention" accent="#d7952b" />
-            <StatCard label="Assets" value={stats?.assets ?? '—'} icon={Boxes} note={user.role === 'Employee' ? 'Assigned to you' : 'In inventory'} accent="#4a79a5" />
-            <StatCard label={user.role === 'System Admin' ? 'Active users' : 'Unread alerts'} value={user.role === 'System Admin' ? stats?.userCount ?? '—' : stats?.unreadNotifications ?? '—'} icon={Bell} note="Live from the service" accent="#735e9d" />
+            <StatCard label={metricLabels[0]} value={stats?.totalTickets ?? '—'} icon={LifeBuoy} note={ticketScopeNote} />
+            <StatCard label={metricLabels[1]} value={stats?.openTickets ?? '—'} icon={Activity} note="Needs attention" accent="#d7952b" />
+            <StatCard label={metricLabels[2]} value={stats?.assets ?? '—'} icon={Boxes} note={user.role === 'Employee' ? 'Assigned to you' : 'Tracked inventory'} accent="#4a79a5" />
+            <StatCard label={metricLabels[3]} value={user.role === 'System Admin' ? stats?.userCount ?? '—' : stats?.unreadNotifications ?? '—'} icon={Bell} note={user.role === 'System Admin' ? 'Enabled accounts' : 'Live from the service'} accent="#735e9d" />
         </div>
         <div className="mt-5 grid gap-5 xl:grid-cols-[1.55fr_1fr]">
-            <section className="rounded-md border border-[#e0e6e7] bg-white p-5"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-sm font-semibold">Requests by status</h2><p className="mt-1 text-xs text-[#89969a]">Current workload</p></div><span className="rounded bg-[#f1f5f4] px-2 py-1 text-[10px] text-[#72817f]">Live</span></div><div className="h-[220px]">{statusData.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={statusData} margin={{ left: -18, right: 8, top: 8 }}><CartesianGrid vertical={false} stroke="#edf0f0" /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#829094' }} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#829094' }} allowDecimals={false} /><Tooltip cursor={{ fill: '#f6f8f8' }} /><Bar dataKey="count" fill="#168477" radius={[3, 3, 0, 0]} maxBarSize={38} /></BarChart></ResponsiveContainer> : <Empty message={busy ? 'Loading ticket activity…' : 'New requests will appear here.'} />}</div></section>
+            <section className="rounded-md border border-[#e0e6e7] bg-white p-5"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-sm font-semibold">{statusSummary[0]}</h2><p className="mt-1 text-xs text-[#89969a]">{statusSummary[1]}</p></div><span className="rounded bg-[#f1f5f4] px-2 py-1 text-[10px] text-[#72817f]">Live</span></div><div className="h-[220px]">{statusData.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={statusData} margin={{ left: -18, right: 8, top: 8 }}><CartesianGrid vertical={false} stroke="#edf0f0" /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#829094' }} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#829094' }} allowDecimals={false} /><Tooltip cursor={{ fill: '#f6f8f8' }} /><Bar dataKey="count" fill="#168477" radius={[3, 3, 0, 0]} maxBarSize={38} /></BarChart></ResponsiveContainer> : <Empty message={busy ? 'Loading ticket activity…' : 'New requests will appear here.'} />}</div></section>
             <section className="rounded-md border border-[#e0e6e7] bg-white p-5"><div className="mb-3"><h2 className="text-sm font-semibold">Priority mix</h2><p className="mt-1 text-xs text-[#89969a]">Requests by urgency</p></div><div className="h-[190px]">{priorityData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={priorityData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={79} paddingAngle={3}>{priorityData.map((_, index) => <Cell key={index} fill={colors[index % colors.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer> : <Empty message="Priority data will show here." />}</div><div className="flex flex-wrap justify-center gap-x-4 gap-y-2">{priorityData.map((item, index) => <span key={item.name} className="flex items-center gap-1.5 text-[10px] text-[#68777c]"><i className="size-2 rounded-full" style={{ background: colors[index % colors.length] }} />{item.name}</span>)}</div></section>
         </div>
         <section className="mt-5 rounded-md border border-[#e0e6e7] bg-white"><div className="flex items-center justify-between border-b border-[#edf0f0] px-5 py-4"><div><h2 className="text-sm font-semibold">Recent requests</h2><p className="mt-1 text-xs text-[#89969a]">Latest updates from your service desk</p></div><button className="text-xs font-semibold text-[#137c70] hover:underline" onClick={() => onNavigate('Tickets')}>View all</button></div><TicketTable tickets={latest} onSelect={onSelect} /></section>
@@ -292,6 +369,141 @@ function ResourceView({ title, items, busy, onCreate, allowUserCreate, canDelete
     const canCreate = ['Assets', 'Vendors', 'Knowledge', 'Departments', 'Categories', 'SLA policies'].includes(title) || (title === 'People' && allowUserCreate)
     return <><PageHeading eyebrow="Service management" title={title} description={`Manage ${title.toLowerCase()} in your organization.`} action={canCreate && <ActionButton onClick={onCreate}><Plus size={15} />Add {title === 'Knowledge' ? 'article' : title === 'SLA policies' ? 'policy' : title === 'People' ? 'user' : title.slice(0, -1)}</ActionButton>} />
         <section className="overflow-hidden rounded-md border border-[#e0e6e7] bg-white">{busy && !items.length ? <div className="p-10"><Empty message="Loading records…" /></div> : !items.length ? <div className="p-12"><Empty message={`No ${title.toLowerCase()} found.`} /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left"><thead className="bg-[#f8f9f9] text-[10px] font-semibold uppercase tracking-[0.1em] text-[#879498]"><tr>{fields.map((field) => <th key={field} className="px-5 py-3">{field.replace(/([A-Z])/g, ' $1')}</th>)}{title === 'Assets' && canManageAssets && <th className="px-5 py-3">Lifecycle</th>}{title === 'People' && canDeleteUsers && <th className="px-5 py-3">Actions</th>}</tr></thead><tbody className="divide-y divide-[#edf0f0]">{items.map((item) => <tr key={item._id}>{fields.map((field) => <td key={field} className="max-w-[260px] truncate px-5 py-3.5 text-xs text-[#526167]">{typeof item[field] === 'object' ? item[field]?.name || JSON.stringify(item[field]) : String(item[field] ?? '—')}</td>)}{title === 'Assets' && canManageAssets && <td className="px-5 py-2"><select aria-label={`Change ${item.name} lifecycle`} value={item.status || 'Available'} onChange={(event) => onAssetLifecycle(item, event.target.value)} className="h-8 rounded border border-[#dce3e3] bg-white px-2 text-[11px] text-[#536267]">{['Available', 'Under Repair', 'Lost', 'Damaged', 'Retired'].map((status) => <option key={status}>{status}</option>)}</select></td>}{title === 'People' && canDeleteUsers && <td className="px-5 py-2"><button type="button" disabled={item.role === 'System Admin'} title={item.role === 'System Admin' ? 'The sole System Admin account cannot be deleted' : `Delete ${item.name}`} aria-label={`Delete ${item.name}`} onClick={() => onUserDelete(item)} className="grid size-8 place-items-center rounded text-[#a4443d] hover:bg-[#fff1ef] disabled:cursor-not-allowed disabled:opacity-30"><Trash2 size={15} /></button></td>}</tr>)}</tbody></table></div>}</section></>
+}
+
+function AssetsView({ user, items, requests, tickets, busy, onCreate, onRequest, onDecision, onReturn, onReceive, onLifecycle }) {
+    const [requesting, setRequesting] = useState(null)
+    const [reason, setReason] = useState('')
+    const [ticketId, setTicketId] = useState('')
+    const employee = user.role === 'Employee'
+    const assetManager = ['Asset Manager', 'System Admin'].includes(user.role)
+    const managerView = assetManager || user.role === 'IT Manager'
+    const canRequest = employee
+    const availableAssets = items.filter((asset) => asset.status === 'Available')
+    const activeRequests = requests.filter((request) => ['Approved', 'Return Requested'].includes(request.status))
+    const openRequests = requests.filter((request) => ['Pending', 'Return Requested'].includes(request.status))
+    const assignDates = (assetId) => activeRequests.find((request) => request.asset?._id === assetId)
+    const availableTickets = tickets.filter((ticket) => !['Resolved', 'Closed'].includes(ticket.status))
+
+    async function submitRequest(event) {
+        event.preventDefault()
+        const success = await onRequest({ asset: requesting._id, reason, ...(ticketId ? { ticket: ticketId } : {}) })
+        if (success) {
+            setRequesting(null)
+            setReason('')
+            setTicketId('')
+        }
+    }
+
+    return <>
+        <PageHeading
+            eyebrow="Service management"
+            title={employee ? 'Assets & temporary equipment' : 'Assets'}
+            description={employee
+                ? 'Check available equipment and request a temporary replacement while your own device is being repaired.'
+                : assetManager
+                    ? 'Review temporary equipment requests, track checkouts and confirm returned items.'
+                    : 'View available assets and equipment assigned to employees in your department.'}
+            action={assetManager && <ActionButton onClick={onCreate}><Plus size={15} />Add Asset</ActionButton>}
+        />
+
+        {employee && <section className="mb-6 rounded-md border border-[#e0e6e7] bg-white p-4 text-xs leading-5 text-[#68777c]">
+            <strong className="text-[#344249]">Need a temporary replacement?</strong> Create a support ticket for your faulty device, choose an available item below, and explain what you need it for. The Asset Manager will review the request and record issue and return times.
+        </section>}
+
+        {assetManager && openRequests.length > 0 && <section className="mb-6 rounded-md border border-[#e0e6e7] bg-white">
+            <div className="border-b border-[#edf0f0] px-5 py-4"><h2 className="text-sm font-semibold">Requests needing action</h2><p className="mt-1 text-xs text-[#89969a]">Approve or decline requests; confirm physical returns before an item becomes available again.</p></div>
+            <div className="divide-y divide-[#edf0f0]">
+                {openRequests.map((request) => <article key={request._id} className="flex flex-wrap items-start justify-between gap-4 px-5 py-4">
+                    <div className="min-w-[220px] flex-1">
+                        <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">{request.asset?.name || 'Asset'}</span><Badge value={request.status} /></div>
+                        <p className="mt-1 text-xs text-[#59676c]">{request.employee?.name || 'Employee'} · {request.asset?.assetId || 'No asset ID'} · {request.asset?.type || 'Equipment'}</p>
+                        <p className="mt-2 text-xs leading-5 text-[#728084]">Reason: {request.reason}</p>
+                        {request.ticket && <p className="mt-1 text-[11px] text-[#137c70]">Related ticket {request.ticket.ticketId}: {request.ticket.title}</p>}
+                        <p className="mt-1 text-[10px] text-[#9aa5a8]">Requested {new Date(request.createdAt).toLocaleString()}</p>
+                    </div>
+                    <div className="flex gap-2">
+                        {request.status === 'Pending' && <>
+                            <button type="button" onClick={() => onDecision(request, 'approve')} className="h-8 rounded bg-[#137c70] px-3 text-xs font-semibold text-white">Approve & issue</button>
+                            <button type="button" onClick={() => onDecision(request, 'decline')} className="h-8 rounded border border-[#dfe6e6] px-3 text-xs font-semibold text-[#536267]">Decline</button>
+                        </>}
+                        {request.status === 'Return Requested' && <button type="button" onClick={() => onReceive(request)} className="h-8 rounded bg-[#137c70] px-3 text-xs font-semibold text-white">Confirm item received</button>}
+                    </div>
+                </article>)}
+            </div>
+        </section>}
+
+        {managerView && requests.length > 0 && <section className="mb-6 overflow-hidden rounded-md border border-[#e0e6e7] bg-white">
+            <div className="border-b border-[#edf0f0] px-5 py-4"><h2 className="text-sm font-semibold">Loan and request history</h2><p className="mt-1 text-xs text-[#89969a]">A record of who requested, received, and returned each temporary asset{user.role === 'IT Manager' ? ' in your department' : ''}.</p></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left">
+                <thead className="bg-[#f8f9f9] text-[10px] font-semibold uppercase tracking-[0.1em] text-[#879498]"><tr><th className="px-5 py-3">Asset</th><th className="px-4 py-3">Employee</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Requested</th><th className="px-4 py-3">Issued</th><th className="px-5 py-3">Received back</th></tr></thead>
+                <tbody className="divide-y divide-[#edf0f0]">{requests.map((request) => <tr key={request._id}>
+                    <td className="px-5 py-3.5 text-xs font-medium text-[#38474d]">{request.asset?.name || 'Asset'}<div className="mt-1 text-[10px] text-[#89969a]">{request.asset?.assetId || 'No asset ID'}</div></td>
+                    <td className="px-4 py-3.5 text-xs text-[#526167]">{request.employee?.name || 'Employee'}</td>
+                    <td className="px-4 py-3.5"><Badge value={request.status} /></td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-[10px] text-[#89969a]">{new Date(request.createdAt).toLocaleString()}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-[10px] text-[#89969a]">{request.issuedAt ? new Date(request.issuedAt).toLocaleString() : '—'}</td>
+                    <td className="whitespace-nowrap px-5 py-3.5 text-[10px] text-[#89969a]">{request.returnedAt ? new Date(request.returnedAt).toLocaleString() : '—'}</td>
+                </tr>)}</tbody>
+            </table></div>
+        </section>}
+
+        {employee && requests.length > 0 && <section className="mb-6 overflow-hidden rounded-md border border-[#e0e6e7] bg-white">
+            <div className="border-b border-[#edf0f0] px-5 py-4"><h2 className="text-sm font-semibold">My temporary asset requests</h2><p className="mt-1 text-xs text-[#89969a]">Issue and return times are recorded for each approved loan.</p></div>
+            <div className="divide-y divide-[#edf0f0]">
+                {requests.map((request) => <article key={request._id} className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
+                    <div>
+                        <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">{request.asset?.name || 'Asset'}</span><Badge value={request.status} /></div>
+                        <p className="mt-1 text-xs text-[#68777c]">{request.asset?.assetId || 'No asset ID'} · {request.reason}</p>
+                        {request.ticket && <p className="mt-1 text-[11px] text-[#137c70]">Related ticket {request.ticket.ticketId}: {request.ticket.title}</p>}
+                        {request.declineReason && <p className="mt-1 text-[11px] text-[#a4443d]">Manager note: {request.declineReason}</p>}
+                        {request.issuedAt && <p className="mt-1 text-[10px] text-[#89969a]">Issued: {new Date(request.issuedAt).toLocaleString()}</p>}
+                        {request.returnedAt && <p className="mt-1 text-[10px] text-[#89969a]">Received back: {new Date(request.returnedAt).toLocaleString()}</p>}
+                    </div>
+                    {request.status === 'Approved' && <button type="button" onClick={() => onReturn(request)} className="h-8 rounded border border-[#dfe6e6] px-3 text-xs font-semibold text-[#536267]">Request return</button>}
+                    {request.status === 'Return Requested' && <span className="text-xs text-[#89969a]">Waiting for Asset Manager to confirm receipt</span>}
+                </article>)}
+            </div>
+        </section>}
+
+        <section className="overflow-hidden rounded-md border border-[#e0e6e7] bg-white">
+            <div className="border-b border-[#edf0f0] px-5 py-4"><h2 className="text-sm font-semibold">{employee ? 'Available equipment' : 'Asset inventory'}</h2><p className="mt-1 text-xs text-[#89969a]">{employee ? `${availableAssets.length} items currently available to request` : 'Current assignees and issue times are shown for temporary loans.'}</p></div>
+            {busy && !items.length ? <div className="p-10"><Empty message="Loading assets…" /></div> : !items.length ? <div className="p-12"><Empty message="No assets found." /></div> : <div className="overflow-x-auto">
+                <table className="w-full min-w-[800px] text-left">
+                    <thead className="bg-[#f8f9f9] text-[10px] font-semibold uppercase tracking-[0.1em] text-[#879498]"><tr>
+                        <th className="px-5 py-3">Asset ID</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Brand / Type</th><th className="px-4 py-3">Status</th>
+                        {!employee && <><th className="px-4 py-3">Assigned employee</th><th className="px-4 py-3">Issued</th></>}
+                        {canRequest && <th className="px-5 py-3">Request</th>}
+                        {assetManager && <th className="px-5 py-3">Lifecycle</th>}
+                    </tr></thead>
+                    <tbody className="divide-y divide-[#edf0f0]">{items.map((asset) => {
+                        const loan = assignDates(asset._id)
+                        return <tr key={asset._id}>
+                            <td className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold text-[#137c70]">{asset.assetId || '—'}</td>
+                            <td className="px-4 py-3.5 text-xs font-medium text-[#38474d]">{asset.name}</td>
+                            <td className="px-4 py-3.5 text-xs text-[#6f7d81]">{[asset.brand, asset.type].filter(Boolean).join(' · ') || '—'}</td>
+                            <td className="px-4 py-3.5"><Badge value={asset.status || 'Available'} /></td>
+                            {!employee && <>
+                                <td className="px-4 py-3.5 text-xs text-[#6f7d81]">{asset.employee?.name || '—'}</td>
+                                <td className="whitespace-nowrap px-4 py-3.5 text-xs text-[#89969a]">{loan?.issuedAt ? new Date(loan.issuedAt).toLocaleString() : '—'}</td>
+                            </>}
+                            {canRequest && <td className="px-5 py-3.5">{asset.status === 'Available' ? <button type="button" onClick={() => setRequesting(asset)} className="h-8 rounded bg-[#137c70] px-3 text-xs font-semibold text-white">Request temporary item</button> : <span className="text-xs text-[#89969a]">Not available</span>}</td>}
+                            {assetManager && <td className="px-5 py-3.5">{['Requested', 'Assigned'].includes(asset.status) ? <span className="text-xs text-[#89969a]">{asset.status === 'Requested' ? 'Approval pending' : 'Managed by loan / return'}</span> : <select aria-label={`Change ${asset.name} lifecycle`} value={asset.status || 'Available'} onChange={(event) => onLifecycle(asset, event.target.value)} className="h-8 rounded border border-[#dce3e3] bg-white px-2 text-[11px] text-[#536267]">{['Available', 'Under Repair', 'Lost', 'Damaged', 'Retired'].map((status) => <option key={status}>{status}</option>)}</select>}</td>}
+                        </tr>
+                    })}</tbody>
+                </table>
+            </div>}
+        </section>
+
+        {requesting && <ModalFrame title={`Request ${requesting.name}`} onClose={() => setRequesting(null)}>
+            <form onSubmit={submitRequest} className="space-y-4">
+                <p className="text-xs leading-5 text-[#68777c]">This item is currently available. Explain why you need a temporary replacement; the Asset Manager will approve or decline it.</p>
+                <Field label="Reason"><textarea value={reason} onChange={(event) => setReason(event.target.value)} required minLength={5} maxLength={1000} rows={4} placeholder="For example: my laptop is under repair and I need a temporary laptop to continue working." className="input resize-y" /></Field>
+                <Field label="Related support ticket (optional)"><select value={ticketId} onChange={(event) => setTicketId(event.target.value)} className="input"><option value="">No related ticket</option>{availableTickets.map((ticket) => <option key={ticket._id} value={ticket._id}>{ticket.ticketId} · {ticket.title}</option>)}</select></Field>
+                <ModalActions onClose={() => setRequesting(null)} submit="Send request" />
+            </form>
+        </ModalFrame>}
+    </>
 }
 
 function NotificationsView({ items, onReadAll }) {
@@ -336,7 +548,7 @@ function ResourceModal({ title, onClose, onSubmit }) {
     const [form, setForm] = useState({})
     const [departments, setDepartments] = useState([])
     useEffect(() => { if (title === 'People') api.get('/departments').then(({ data }) => setDepartments(data.items)).catch(() => { }) }, [title])
-    const fields = title === 'Assets' ? ['name', 'type', 'brand', 'serialNumber', 'status', 'warrantyEnd'] : title === 'Vendors' ? ['name', 'contactPerson', 'email', 'phone', 'website'] : title === 'Knowledge' ? ['title', 'category', 'problem', 'solution', 'tags'] : title === 'People' ? ['name', 'email', 'role', 'department', 'password'] : title === 'Categories' ? ['name', 'subcategories'] : title === 'SLA policies' ? ['name', 'priority', 'responseMinutes', 'resolutionMinutes'] : ['name', 'description']
+    const fields = title === 'Assets' ? ['assetId', 'name', 'type', 'brand', 'serialNumber', 'warrantyEnd'] : title === 'Vendors' ? ['name', 'contactPerson', 'email', 'phone', 'website'] : title === 'Knowledge' ? ['title', 'category', 'problem', 'solution', 'tags'] : title === 'People' ? ['name', 'email', 'role', 'department', 'password'] : title === 'Categories' ? ['name', 'subcategories'] : title === 'SLA policies' ? ['name', 'priority', 'responseMinutes', 'resolutionMinutes'] : ['name', 'description']
     function submitForm(event) {
         event.preventDefault()
         const payload = { ...form }
@@ -355,44 +567,170 @@ function TicketPanel({ ticket, user, onClose, onStatus, onUpdated, onToast }) {
     const [comment, setComment] = useState('')
     const [internal, setInternal] = useState(false)
     const [replying, setReplying] = useState(false)
-    const staff = ['System Admin', 'IT Manager', 'Technician'].includes(user.role)
-    useEffect(() => { api.get(`/tickets/${ticket._id}`).then(({ data }) => setDetails(data)).catch(() => { }) }, [ticket._id])
+    const [technicians, setTechnicians] = useState([])
+    const [technicianId, setTechnicianId] = useState('')
+    const [declineReason, setDeclineReason] = useState('')
+    const [workDescription, setWorkDescription] = useState('')
+    const [workMinutes, setWorkMinutes] = useState('15')
+    const [savingWork, setSavingWork] = useState(false)
+    const canManageAssignment = ['System Admin', 'IT Manager'].includes(user.role)
+    const isAssignedTechnician = user.role === 'Technician' && ticket.assignedTo?._id === user.id
+    const latestAssignment = ticket.assignmentRequests?.at(-1)
+    const pendingAssignment = latestAssignment?.status === 'Pending' ? latestAssignment : null
+    const myPendingAssignment = pendingAssignment?.technician?._id === user.id
+    const roleStatusActions = {
+        'System Admin': ['Pending', 'Escalated', 'Reopened'],
+        'IT Manager': ['Pending', 'Escalated'],
+        Technician: isAssignedTechnician ? ['In Progress', 'Pending', 'Escalated', 'Resolved'] : [],
+    }[user.role] || []
+    const statusActions = roleStatusActions.filter((status) => {
+        if (status === 'Reopened') return ['Resolved', 'Closed'].includes(ticket.status)
+        if (['Resolved', 'Closed'].includes(ticket.status)) return false
+        if (status === 'In Progress') return ['Assigned', 'Pending', 'In Progress'].includes(ticket.status)
+        if (status === 'Resolved') return ['In Progress', 'Pending', 'Escalated'].includes(ticket.status)
+        return status !== ticket.status
+    })
+    const statusActionHint = {
+        'System Admin': 'Platform oversight controls',
+        'IT Manager': 'Manager controls: place on hold or escalate',
+        Technician: 'Technician controls: update your accepted work',
+    }[user.role]
+    useEffect(() => {
+        api.get(`/tickets/${ticket._id}`).then(({ data }) => setDetails(data)).catch(() => { })
+    }, [ticket._id, ticket.updatedAt])
     async function sendComment(event) {
         event.preventDefault()
         setReplying(true)
-        try { await api.post(`/tickets/${ticket._id}/comments`, { body: comment, internal }); setComment(''); setToastMessage(internal ? 'Internal note added' : 'Reply sent'); const { data } = await api.get(`/tickets/${ticket._id}`); setDetails(data); onUpdated() }
+        try { await api.post(`/tickets/${ticket._id}/comments`, { body: comment, internal }); setComment(''); onToast(internal ? 'Internal note added' : 'Reply sent'); const { data } = await api.get(`/tickets/${ticket._id}`); setDetails(data); onUpdated() }
         catch (error) { onToast(error.response?.data?.error?.message || 'Could not send reply') }
         finally { setReplying(false) }
     }
-    function setToastMessage(message) { onToast(message) }
-    const [technicians, setTechnicians] = useState([])
-    const [technicianId, setTechnicianId] = useState('')
     useEffect(() => {
-        if (['System Admin', 'IT Manager'].includes(user.role)) {
+        if (canManageAssignment) {
             api.get('/technicians').then(({ data }) => setTechnicians(data.items)).catch(() => { })
         }
-    }, [user.role])
+    }, [canManageAssignment])
     async function assignTechnician() {
         try {
             await api.patch(`/tickets/${ticket._id}/assign`, { technician: technicianId })
-            onToast('Technician assigned')
+            onToast('Acceptance request sent to technician')
             setTechnicianId('')
             onUpdated()
         } catch (error) {
-            onToast(error.response?.data?.error?.message || 'Assignment failed')
+            onToast(error.response?.data?.error?.message || 'Could not request technician acceptance')
         }
     }
-    return <div className="fixed inset-0 z-50 flex justify-end bg-[#172526]/30" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><aside className="flex h-full w-full max-w-[620px] flex-col bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-[#e5eaea] px-6 py-4"><div><div className="text-[11px] font-semibold text-[#137c70]">{ticket.ticketId}</div><div className="mt-1 max-w-[460px] truncate text-sm font-semibold">{ticket.title}</div></div><button aria-label="Close ticket" onClick={onClose} className="rounded p-2 text-[#78868a] hover:bg-[#f2f5f5]"><X size={18} /></button></div><div className="flex-1 space-y-6 overflow-y-auto p-6"><div className="flex flex-wrap gap-2"><Badge value={ticket.status} /><Badge value={ticket.priority} /></div><p className="whitespace-pre-wrap text-sm leading-6 text-[#56656a]">{ticket.description}</p><div className="grid grid-cols-2 gap-4 border-y border-[#edf0f0] py-4 text-xs"><div><span className="text-[#8b989c]">Requester</span><div className="mt-1 font-medium">{ticket.employee?.name || '—'}</div></div><div><span className="text-[#8b989c]">Assignee</span><div className="mt-1 font-medium">{ticket.assignedTo?.name || 'Unassigned'}</div></div><div><span className="text-[#8b989c]">Department</span><div className="mt-1 font-medium">{ticket.department?.name || '—'}</div></div><div><span className="text-[#8b989c]">Created</span><div className="mt-1 font-medium">{new Date(ticket.createdAt).toLocaleString()}</div></div></div>{staff && <div className="flex gap-2">
-        <select aria-label="Assign technician" value={technicianId} onChange={(event) => setTechnicianId(event.target.value)} className="input h-9">
-            <option value="">Choose technician</option>
-            {technicians.map((person) => <option key={person._id} value={person._id}>{person.name}</option>)}
-        </select>
-        <button type="button" disabled={!technicianId} onClick={assignTechnician} className="h-9 rounded bg-[#137c70] px-3 text-xs font-semibold text-white disabled:opacity-50">Assign</button>
-    </div>}
-        {staff && <div className="flex flex-wrap gap-2">{['In Progress', 'Pending', 'Escalated', 'Resolved'].filter((status) => status !== ticket.status).map((status) => <button key={status} onClick={() => onStatus(ticket, status)} className="rounded border border-[#dfe6e6] px-2.5 py-1.5 text-[11px] font-medium text-[#536267] hover:border-[#a7cbc5] hover:text-[#137c70]">Set {status}</button>)}</div>}
-        {user.role === 'Employee' && ticket.status === 'Resolved' && <button onClick={() => onStatus(ticket, 'Closed')} className="w-fit rounded border border-[#dfe6e6] px-2.5 py-1.5 text-[11px] font-medium text-[#536267]">Confirm resolution</button>}
-        {user.role === 'Employee' && ['Resolved', 'Closed'].includes(ticket.status) && <button onClick={() => onStatus(ticket, 'Reopened')} className="w-fit rounded border border-[#dfe6e6] px-2.5 py-1.5 text-[11px] font-medium text-[#536267]">Reopen request</button>}
-        <section><h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[#667579]">Conversation</h3><div className="space-y-3">{details?.comments?.length ? details.comments.map((entry) => <article key={entry._id} className={`rounded-md p-3 ${entry.internal ? 'bg-[#fff8ec]' : 'bg-[#f5f8f8]'}`}><div className="flex justify-between text-[10px] font-semibold"><span>{entry.author?.name || 'Support'} {entry.internal && <span className="ml-1 text-[#aa7725]">· Internal note</span>}</span><time className="font-normal text-[#97a2a5]">{new Date(entry.createdAt).toLocaleString()}</time></div><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[#59676c]">{entry.body}</p></article>) : <p className="text-xs text-[#98a3a6]">No replies yet.</p>}</div></section><section><h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[#667579]">Activity</h3>{ticket.history?.length ? <div className="space-y-2">{[...ticket.history].reverse().map((event, index) => <div key={index} className="flex gap-3 text-[11px] text-[#728084]"><span className="mt-1 size-1.5 rounded-full bg-[#90b7af]" /><span>{event.action}{event.to && typeof event.to === 'string' ? ` · ${event.to}` : ''}<time className="ml-2 text-[#a1abad]">{new Date(event.at).toLocaleString()}</time></span></div>)}</div> : <p className="text-xs text-[#98a3a6]">No activity recorded.</p>}</section></div><form onSubmit={sendComment} className="border-t border-[#e5eaea] p-5"><textarea value={comment} onChange={(event) => setComment(event.target.value)} required rows={3} placeholder={internal ? 'Add an internal note…' : 'Write a reply…'} className="input resize-none" />{staff && <label className="mt-2 flex items-center gap-2 text-[11px] text-[#758287]"><input type="checkbox" checked={internal} onChange={(event) => setInternal(event.target.checked)} />Internal note visible to support staff only</label>}<div className="mt-3 flex justify-between"><span className="text-[10px] text-[#9aa5a8]">Use clear, actionable details</span><button disabled={replying} className="inline-flex h-8 items-center gap-2 rounded bg-[#137c70] px-3 text-xs font-semibold text-white disabled:opacity-60"><Send size={13} />{replying ? 'Sending…' : 'Send reply'}</button></div></form></aside></div>
+    async function respondToAssignment(decision) {
+        try {
+            await api.patch(`/tickets/${ticket._id}/assignment-response`, { decision, reason: declineReason })
+            setDeclineReason('')
+            onToast(decision === 'accept' ? 'Assignment accepted. You can now start work.' : 'Assignment declined and manager notified')
+            const { data } = await api.get(`/tickets/${ticket._id}`)
+            setDetails(data)
+            onUpdated()
+        } catch (error) {
+            onToast(error.response?.data?.error?.message || 'Could not respond to assignment')
+        }
+    }
+    async function logWork(event) {
+        event.preventDefault()
+        setSavingWork(true)
+        try {
+            await api.post(`/tickets/${ticket._id}/worklogs`, { description: workDescription, minutes: Number(workMinutes) })
+            setWorkDescription('')
+            onToast('Work update shared with the requester and manager')
+            const { data } = await api.get(`/tickets/${ticket._id}`)
+            setDetails(data)
+            onUpdated()
+        } catch (error) {
+            onToast(error.response?.data?.error?.message || 'Could not save work update')
+        } finally {
+            setSavingWork(false)
+        }
+    }
+    const assignmentMessage = pendingAssignment
+        ? `Waiting for ${pendingAssignment.technician?.name || 'the selected technician'} to accept or decline.`
+        : latestAssignment?.status === 'Declined'
+            ? `${latestAssignment.technician?.name || 'Technician'} declined: ${latestAssignment.reason}`
+            : latestAssignment?.status === 'Accepted'
+                ? `${latestAssignment.technician?.name || 'Technician'} accepted this request.`
+                : ''
+    const employeeActions = user.role === 'Employee'
+        ? [
+            ...(ticket.status === 'Resolved' ? [{ status: 'Closed', label: 'Confirm resolution' }] : []),
+            ...(['Resolved', 'Closed'].includes(ticket.status) ? [{ status: 'Reopened', label: 'Reopen request' }] : []),
+        ]
+        : []
+    return <div className="fixed inset-0 z-50 flex justify-end bg-[#172526]/30" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+        <aside className="flex h-full w-full max-w-[620px] flex-col bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#e5eaea] px-6 py-4">
+                <div><div className="text-[11px] font-semibold text-[#137c70]">{ticket.ticketId}</div><div className="mt-1 max-w-[460px] truncate text-sm font-semibold">{ticket.title}</div></div>
+                <button aria-label="Close ticket" onClick={onClose} className="rounded p-2 text-[#78868a] hover:bg-[#f2f5f5]"><X size={18} /></button>
+            </div>
+            <div className="flex-1 space-y-6 overflow-y-auto p-6">
+                <div className="flex flex-wrap gap-2"><Badge value={ticket.status} /><Badge value={ticket.priority} /></div>
+                <p className="whitespace-pre-wrap text-sm leading-6 text-[#56656a]">{ticket.description}</p>
+                <div className="grid grid-cols-2 gap-4 border-y border-[#edf0f0] py-4 text-xs">
+                    <div><span className="text-[#8b989c]">Requester</span><div className="mt-1 font-medium">{ticket.employee?.name || '—'}</div></div>
+                    <div><span className="text-[#8b989c]">Assigned technician</span><div className="mt-1 font-medium">{ticket.assignedTo?.name || 'Not assigned yet'}</div></div>
+                    <div><span className="text-[#8b989c]">Department</span><div className="mt-1 font-medium">{ticket.department?.name || '—'}</div></div>
+                    <div><span className="text-[#8b989c]">Created</span><div className="mt-1 font-medium">{new Date(ticket.createdAt).toLocaleString()}</div></div>
+                </div>
+                {assignmentMessage && <div className={`rounded-md border p-3 text-xs ${latestAssignment?.status === 'Declined' ? 'border-[#f0d2cf] bg-[#fff8f7] text-[#a4443d]' : 'border-[#dbe8e5] bg-[#f5faf8] text-[#426d66]'}`}>
+                    <div className="font-semibold">Technician assignment</div>
+                    <p className="mt-1">{assignmentMessage}</p>
+                </div>}
+                {canManageAssignment && <section className="space-y-2">
+                    <h3 className="text-xs font-semibold text-[#536267]">Request technician acceptance</h3>
+                    <div className="flex gap-2">
+                        <select aria-label="Choose technician" value={technicianId} onChange={(event) => setTechnicianId(event.target.value)} className="input h-9" disabled={Boolean(pendingAssignment)}>
+                            <option value="">Choose technician</option>
+                            {technicians.map((person) => <option key={person._id} value={person._id}>{person.name}</option>)}
+                        </select>
+                        <button type="button" disabled={!technicianId || Boolean(pendingAssignment)} onClick={assignTechnician} className="h-9 whitespace-nowrap rounded bg-[#137c70] px-3 text-xs font-semibold text-white disabled:opacity-50">Request acceptance</button>
+                    </div>
+                    {pendingAssignment && <p className="text-[11px] text-[#89969a]">Wait for this technician to accept or decline before sending another request.</p>}
+                </section>}
+                {myPendingAssignment && <section className="space-y-3 rounded-md border border-[#dbe8e5] bg-[#f8fbfa] p-4">
+                    <div><h3 className="text-sm font-semibold">Can you take this request?</h3><p className="mt-1 text-xs text-[#728084]">Accept to become the assigned technician, or decline and tell the manager why.</p></div>
+                    <textarea value={declineReason} onChange={(event) => setDeclineReason(event.target.value)} rows={2} maxLength={1000} placeholder="Reason if unavailable" className="input resize-y" />
+                    <div className="flex gap-2">
+                        <button type="button" onClick={() => respondToAssignment('accept')} className="h-8 rounded bg-[#137c70] px-3 text-xs font-semibold text-white">Accept request</button>
+                        <button type="button" disabled={!declineReason.trim()} onClick={() => respondToAssignment('decline')} className="h-8 rounded border border-[#dfe6e6] px-3 text-xs font-semibold text-[#536267] disabled:opacity-50">Decline with reason</button>
+                    </div>
+                </section>}
+                {statusActions.length > 0 && <section>
+                    <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#89969a]">{statusActionHint}</h3>
+                    <div className="flex flex-wrap gap-2">{statusActions.filter((status) => status !== ticket.status).map((status) => <button key={status} onClick={() => onStatus(ticket, status)} className="rounded border border-[#dfe6e6] px-2.5 py-1.5 text-[11px] font-medium text-[#536267] hover:border-[#a7cbc5] hover:text-[#137c70]">{user.role === 'Technician' && status === 'In Progress' ? 'Start work' : `Set ${status}`}</button>)}</div>
+                </section>}
+                {employeeActions.map(({ status, label }) => <button key={status} onClick={() => onStatus(ticket, status)} className="w-fit rounded border border-[#dfe6e6] px-2.5 py-1.5 text-[11px] font-medium text-[#536267]">{label}</button>)}
+                {isAssignedTechnician && ticket.status === 'In Progress' && <form onSubmit={logWork} className="space-y-2 rounded-md border border-[#e0e6e7] p-4">
+                    <h3 className="text-xs font-semibold text-[#536267]">Share a work progress update</h3>
+                    <textarea value={workDescription} onChange={(event) => setWorkDescription(event.target.value)} required maxLength={2000} rows={2} placeholder="Describe what you completed or what you are working on" className="input resize-y" />
+                    <div className="flex items-center justify-between gap-3"><label className="flex items-center gap-2 text-[11px] text-[#758287]">Minutes worked<input type="number" min="1" max="1440" required value={workMinutes} onChange={(event) => setWorkMinutes(event.target.value)} className="input h-8 w-24" /></label><button disabled={savingWork} className="h-8 rounded bg-[#137c70] px-3 text-xs font-semibold text-white disabled:opacity-60">{savingWork ? 'Sharing…' : 'Share update'}</button></div>
+                </form>}
+                <section>
+                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[#667579]">Conversation</h3>
+                    <div className="space-y-3">{details?.comments?.length ? details.comments.map((entry) => <article key={entry._id} className={`rounded-md p-3 ${entry.internal ? 'bg-[#fff8ec]' : 'bg-[#f5f8f8]'}`}><div className="flex justify-between text-[10px] font-semibold"><span>{entry.author?.name || 'Support'} {entry.internal && <span className="ml-1 text-[#aa7725]">· Internal note</span>}</span><time className="font-normal text-[#97a2a5]">{new Date(entry.createdAt).toLocaleString()}</time></div><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[#59676c]">{entry.body}</p></article>) : <p className="text-xs text-[#98a3a6]">No replies yet.</p>}</div>
+                </section>
+                <section>
+                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[#667579]">Work progress</h3>
+                    <div className="space-y-2">{details?.workLogs?.length ? details.workLogs.map((entry) => <article key={entry._id} className="rounded-md bg-[#f5f8f8] p-3"><div className="flex justify-between gap-3 text-[10px] font-semibold"><span>{entry.technician?.name || 'Technician'} · {entry.minutes} min</span><time className="font-normal text-[#97a2a5]">{new Date(entry.workedAt).toLocaleString()}</time></div><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[#59676c]">{entry.description}</p></article>) : <p className="text-xs text-[#98a3a6]">No work updates have been shared yet.</p>}</div>
+                </section>
+                <section>
+                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[#667579]">Activity</h3>
+                    {ticket.history?.length
+                        ? <div className="space-y-2">{[...ticket.history].reverse().map((event, index) => <div key={index} className="flex gap-3 text-[11px] text-[#728084]"><span className="mt-1 size-1.5 rounded-full bg-[#90b7af]" /><span>{event.action}{event.to && typeof event.to === 'string' ? ` · ${event.to}` : ''}<time className="ml-2 text-[#a1abad]">{new Date(event.at).toLocaleString()}</time></span></div>)}</div>
+                        : <p className="text-xs text-[#98a3a6]">No activity recorded.</p>}
+                </section>
+            </div>
+            <form onSubmit={sendComment} className="border-t border-[#e5eaea] p-5">
+                <textarea value={comment} onChange={(event) => setComment(event.target.value)} required rows={3} placeholder={internal ? 'Add an internal note…' : 'Write a reply…'} className="input resize-none" />
+                {['System Admin', 'IT Manager', 'Technician'].includes(user.role) && <label className="mt-2 flex items-center gap-2 text-[11px] text-[#758287]"><input type="checkbox" checked={internal} onChange={(event) => setInternal(event.target.checked)} />Internal note visible to support staff only</label>}
+                <div className="mt-3 flex justify-between"><span className="text-[10px] text-[#9aa5a8]">Use clear, actionable details</span><button disabled={replying} className="inline-flex h-8 items-center gap-2 rounded bg-[#137c70] px-3 text-xs font-semibold text-white disabled:opacity-60"><Send size={13} />{replying ? 'Sending…' : 'Send reply'}</button></div>
+            </form>
+        </aside>
+    </div>
 }
 
 function ModalFrame({ title, onClose, children }) { return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#172526]/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="max-h-[90vh] w-full max-w-[600px] overflow-y-auto rounded-md bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-[#e8eded] px-6 py-4"><h2 className="text-sm font-semibold">{title}</h2><button onClick={onClose} aria-label="Close dialog" className="rounded p-1.5 text-[#758287] hover:bg-[#f3f6f6]"><X size={17} /></button></div><div className="p-6">{children}</div></section></div> }

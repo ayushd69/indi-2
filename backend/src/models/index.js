@@ -22,6 +22,20 @@ const categorySchema = new Schema({ name: { type: String, required: true, unique
 const slaSchema = new Schema({ name: { type: String, required: true }, priority: String, responseMinutes: Number, resolutionMinutes: Number, businessHoursOnly: { type: Boolean, default: false }, active: { type: Boolean, default: true } }, baseOptions)
 const commentSchema = new Schema({ ticket: { type: Schema.Types.ObjectId, ref: 'Ticket', required: true }, author: { type: Schema.Types.ObjectId, ref: 'User', required: true }, body: { type: String, required: true }, internal: { type: Boolean, default: false }, attachments: [Schema.Types.Mixed] }, baseOptions)
 const workLogSchema = new Schema({ ticket: { type: Schema.Types.ObjectId, ref: 'Ticket', required: true }, technician: { type: Schema.Types.ObjectId, ref: 'User', required: true }, description: { type: String, required: true }, minutes: { type: Number, min: 1, required: true }, workedAt: { type: Date, default: Date.now } }, baseOptions)
+const assetRequestSchema = new Schema({
+    asset: { type: Schema.Types.ObjectId, ref: 'Asset', required: true },
+    employee: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    ticket: { type: Schema.Types.ObjectId, ref: 'Ticket' },
+    reason: { type: String, required: true, maxlength: 1000 },
+    status: { type: String, enum: ['Pending', 'Approved', 'Declined', 'Return Requested', 'Returned'], default: 'Pending' },
+    declineReason: { type: String, maxlength: 1000 },
+    reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    reviewedAt: Date,
+    issuedAt: Date,
+    returnedAt: Date,
+}, baseOptions)
+assetRequestSchema.index({ asset: 1, status: 1 })
+assetRequestSchema.index({ employee: 1, createdAt: -1 })
 const ticketSchema = new Schema({
     ticketId: { type: String, unique: true, index: true },
     title: { type: String, required: true, trim: true },
@@ -33,6 +47,14 @@ const ticketSchema = new Schema({
     priority: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'], default: 'Medium' },
     status: { type: String, enum: ['Open', 'Assigned', 'In Progress', 'Pending', 'Escalated', 'Resolved', 'Closed', 'Reopened'], default: 'Open' },
     assignedTo: { type: Schema.Types.ObjectId, ref: 'User' },
+    assignmentRequests: [{
+        technician: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        requestedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        status: { type: String, enum: ['Pending', 'Accepted', 'Declined'], required: true },
+        reason: String,
+        requestedAt: { type: Date, default: Date.now },
+        respondedAt: Date,
+    }],
     sla: { type: Schema.Types.ObjectId, ref: 'SLA' },
     responseDueAt: Date,
     resolutionDueAt: Date,
@@ -43,7 +65,7 @@ const ticketSchema = new Schema({
 ticketSchema.index({ status: 1, priority: 1, department: 1, createdAt: -1 })
 ticketSchema.index({ title: 'text', description: 'text', ticketId: 'text' })
 
-const assetSchema = new Schema({ assetId: { type: String, unique: true }, name: { type: String, required: true }, type: String, category: String, brand: String, model: String, serialNumber: String, purchaseDate: Date, purchasePrice: Number, vendor: { type: Schema.Types.ObjectId, ref: 'Vendor' }, warrantyStart: Date, warrantyEnd: Date, employee: { type: Schema.Types.ObjectId, ref: 'User' }, department: { type: Schema.Types.ObjectId, ref: 'Department' }, location: String, condition: String, status: { type: String, enum: ['Available', 'Assigned', 'Under Repair', 'Lost', 'Damaged', 'Retired'], default: 'Available' }, notes: String, history: [Schema.Types.Mixed] }, baseOptions)
+const assetSchema = new Schema({ assetId: { type: String, unique: true }, name: { type: String, required: true }, type: String, category: String, brand: String, model: String, serialNumber: String, purchaseDate: Date, purchasePrice: Number, vendor: { type: Schema.Types.ObjectId, ref: 'Vendor' }, warrantyStart: Date, warrantyEnd: Date, employee: { type: Schema.Types.ObjectId, ref: 'User' }, department: { type: Schema.Types.ObjectId, ref: 'Department' }, location: String, condition: String, status: { type: String, enum: ['Available', 'Requested', 'Assigned', 'Under Repair', 'Lost', 'Damaged', 'Retired'], default: 'Available' }, notes: String, history: [Schema.Types.Mixed] }, baseOptions)
 const vendorSchema = new Schema({ name: { type: String, required: true }, contactPerson: String, email: String, phone: String, address: String, website: String, productsServices: [String], notes: String }, baseOptions)
 const articleSchema = new Schema({ title: { type: String, required: true }, category: String, problem: String, solution: String, tags: [String], author: { type: Schema.Types.ObjectId, ref: 'User' }, status: { type: String, enum: ['Draft', 'Published', 'Archived'], default: 'Draft' } }, baseOptions)
 articleSchema.index({ title: 'text', problem: 'text', solution: 'text', tags: 'text' })
@@ -69,6 +91,7 @@ module.exports = {
     Vendor: model('Vendor', vendorSchema),
     WorkLog: model('WorkLog', workLogSchema),
     Asset: model('Asset', assetSchema),
+    AssetRequest: model('AssetRequest', assetRequestSchema),
     roles,
     systemAdminEmail,
 }
