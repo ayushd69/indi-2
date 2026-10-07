@@ -49,10 +49,7 @@ The System Admin account has dedicated credentials. All other demo accounts use 
 | Role | Email |
 | --- | --- |
 | System Admin | `system@gmail.com` / `system@123` |
-| IT Manager | `manager@servicedesk.com` |
-| Technician | `technician@servicedesk.com` |
-| Employee | `employee@servicedesk.com` |
-| Asset Manager | `assetmanager@servicedesk.com` |
+
 
 ## Working modules
 
