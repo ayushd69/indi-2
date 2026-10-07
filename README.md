@@ -40,6 +40,7 @@ ServiceDesk Pro is a MERN IT helpdesk and asset management platform. The reposit
 - `npm run lint` runs frontend ESLint.
 - `npm start` starts the API after connecting to MongoDB.
 - `npm --prefix backend test` runs backend Node.js tests.
+- `npm --prefix backend run seed:admin` safely creates or resets only the System Admin account. Set `ADMIN_INITIAL_PASSWORD` and `MONGODB_URI` in `backend/.env` first. Unlike the full demo seed, this command does not clear tickets or other application data.
 - `npm --prefix backend run seed` resets tickets, asset requests, and ticket/request-related comments, work logs, notifications, and audit entries. It retains user accounts and roles, existing assets, departments, categories, SLAs, and knowledge articles; it also ensures the demo asset catalog is present.
 
 ## Demo accounts
