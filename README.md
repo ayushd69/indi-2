@@ -40,7 +40,7 @@ ServiceDesk Pro is a MERN IT helpdesk and asset management platform. The reposit
 - `npm run lint` runs frontend ESLint.
 - `npm start` starts the API after connecting to MongoDB.
 - `npm --prefix backend test` runs backend Node.js tests.
-- `npm --prefix backend run seed` creates repeatable demo data.
+- `npm --prefix backend run seed` resets tickets, asset requests, and ticket/request-related comments, work logs, notifications, and audit entries. It retains user accounts and roles, existing assets, departments, categories, SLAs, and knowledge articles; it also ensures the demo asset catalog is present.
 
 ## Demo accounts
 
@@ -60,7 +60,7 @@ The System Admin account has dedicated credentials. All other demo accounts use 
 - Ticket creation, search/filter, unique yearly IDs, manager assignment requests with technician acceptance/decline reasons, role-specific status lifecycle, comments, internal notes, shared work-progress logs, escalation, SLA deadlines and history.
 - SLA at-risk alerts and breach escalation checked once per minute; policies are configurable by priority.
 - Temporary asset loans: employees can request available equipment with a reason and optional repair ticket; Asset Managers approve/decline, issue items with timestamps, and confirm returns before assets become available again. Managers can review department assignments and loan history.
-- Asset, vendor and knowledge article CRUD, asset lifecycle endpoints, notifications, admin audit trail and CSV ticket reports.
+- Asset and knowledge article management, asset lifecycle endpoints, notifications, admin audit trail and CSV ticket reports.
 - Role-scoped dashboards with ticket status/priority charts; AI classification suggestions are review-only and can use `AI_API_KEY`, `AI_API_URL` and `AI_MODEL` from the backend environment.
 - Helmet, CORS, rate limiting, input checks, centralized errors and pagination on collection APIs.
 

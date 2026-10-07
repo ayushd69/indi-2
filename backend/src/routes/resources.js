@@ -2,7 +2,7 @@ const express = require('express')
 const bcrypt = require('bcryptjs')
 const mongoose = require('mongoose')
 const { allowRoles, authenticate } = require('../middleware/auth')
-const { Asset, AssetRequest, AuditLog, Category, Counter, Department, KnowledgeArticle, Notification, SLA, Ticket, User, Vendor, WorkLog, systemAdminEmail } = require('../models')
+const { Asset, AssetRequest, AuditLog, Category, Counter, Department, KnowledgeArticle, Notification, SLA, Ticket, User, WorkLog, systemAdminEmail } = require('../models')
 
 const router = express.Router()
 const resources = {
@@ -11,7 +11,6 @@ const resources = {
     slas: { model: SLA, write: ['System Admin'] },
     users: { model: User, write: ['System Admin'] },
     assets: { model: Asset, write: ['System Admin', 'Asset Manager'] },
-    vendors: { model: Vendor, write: ['System Admin', 'Asset Manager'] },
     articles: { model: KnowledgeArticle, write: ['System Admin', 'IT Manager', 'Technician'] },
 }
 
@@ -380,7 +379,7 @@ for (const [path, config] of Object.entries(resources)) {
                     : []
                 filter = { $or: [{ status: 'Available' }, { employee: { $in: employees.map((employee) => employee.id) } }] }
             }
-            if (req.query.search && ['assets', 'vendors', 'articles'].includes(path)) filter.$text = { $search: String(req.query.search).slice(0, 100) }
+            if (req.query.search && ['assets', 'articles'].includes(path)) filter.$text = { $search: String(req.query.search).slice(0, 100) }
             const query = model.find(filter).select(path === 'users' ? '-passwordHash' : undefined)
             if (path === 'assets') query.populate('employee', 'name email').populate('department', 'name')
             const [items, total] = await Promise.all([query.sort({ createdAt: -1, name: 1 }).skip((page - 1) * limit).limit(limit), model.countDocuments(filter)])
@@ -399,7 +398,7 @@ for (const [path, config] of Object.entries(resources)) {
                 item = await User.create({ name: name.trim(), email: email.trim().toLowerCase(), role, department, title, passwordHash: await bcrypt.hash(password, 12) })
             } else {
                 if (path === 'assets') {
-                    const assetFields = ['assetId', 'name', 'type', 'category', 'brand', 'model', 'serialNumber', 'purchaseDate', 'purchasePrice', 'vendor', 'warrantyStart', 'warrantyEnd', 'location', 'condition', 'notes']
+                    const assetFields = ['assetId', 'name', 'type', 'category', 'brand', 'model', 'serialNumber', 'purchaseDate', 'purchasePrice', 'warrantyStart', 'warrantyEnd', 'location', 'condition', 'notes']
                     const asset = Object.fromEntries(assetFields.filter((field) => req.body[field] !== undefined).map((field) => [field, req.body[field]]))
                     if (!asset.assetId) {
                         const existingIds = await Asset.find({ assetId: /^AST-\d+$/ }).select('assetId')
@@ -430,7 +429,7 @@ for (const [path, config] of Object.entries(resources)) {
             const changes = path === 'users'
                 ? Object.fromEntries(['name', 'email', 'role', 'department', 'title', 'phone', 'active'].filter((field) => req.body[field] !== undefined).map((field) => [field, req.body[field]]))
                 : path === 'assets'
-                    ? Object.fromEntries(['assetId', 'name', 'type', 'category', 'brand', 'model', 'serialNumber', 'purchaseDate', 'purchasePrice', 'vendor', 'warrantyStart', 'warrantyEnd', 'location', 'condition', 'notes'].filter((field) => req.body[field] !== undefined).map((field) => [field, req.body[field]]))
+                    ? Object.fromEntries(['assetId', 'name', 'type', 'category', 'brand', 'model', 'serialNumber', 'purchaseDate', 'purchasePrice', 'warrantyStart', 'warrantyEnd', 'location', 'condition', 'notes'].filter((field) => req.body[field] !== undefined).map((field) => [field, req.body[field]]))
                     : req.body
             if (path === 'users' && (changes.role || previous.role) === 'System Admin' && (changes.email || previous.email).toLowerCase() !== systemAdminEmail) {
                 return res.status(400).json({ error: { message: `The System Admin account must use ${systemAdminEmail}` } })

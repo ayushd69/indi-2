@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, AlertCircle, ArrowDownToLine, Bell, BookOpen, Boxes, BriefcaseBusiness, Check, CircleHelp, Clock3, FileBarChart, LayoutDashboard, LifeBuoy, LogOut, Menu, Plus, Search, Send, Settings2, ShieldCheck, Trash2, Users, X } from 'lucide-react'
+import { Activity, AlertCircle, ArrowDownToLine, Bell, BookOpen, Boxes, Check, CircleHelp, Clock3, FileBarChart, LayoutDashboard, LifeBuoy, LogOut, Menu, Plus, Search, Send, Settings2, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import api from './api'
 
@@ -8,7 +8,6 @@ const navigation = [
     { id: 'Tickets', icon: LifeBuoy, roles: '*' },
     { id: 'Assets', icon: Boxes, roles: ['System Admin', 'IT Manager', 'Asset Manager', 'Employee'] },
     { id: 'Knowledge', icon: BookOpen, roles: '*' },
-    { id: 'Vendors', icon: BriefcaseBusiness, roles: ['System Admin', 'Asset Manager'] },
     { id: 'People', icon: Users, roles: ['System Admin'] },
     { id: 'Departments', icon: Settings2, roles: ['System Admin'] },
     { id: 'Categories', icon: Settings2, roles: ['System Admin'] },
@@ -18,7 +17,7 @@ const navigation = [
     { id: 'Audit trail', icon: ShieldCheck, roles: ['System Admin'] },
 ]
 const colors = ['#137c70', '#d7952b', '#4a79a5', '#be6157', '#735e9d', '#85959d']
-const apiPath = { Assets: 'assets', Vendors: 'vendors', Knowledge: 'articles', People: 'users', Departments: 'departments', Categories: 'categories', 'SLA policies': 'slas', 'Work logs': 'worklogs', 'Audit trail': 'audit' }
+const apiPath = { Assets: 'assets', Knowledge: 'articles', People: 'users', Departments: 'departments', Categories: 'categories', 'SLA policies': 'slas', 'Work logs': 'worklogs', 'Audit trail': 'audit' }
 const roleHome = { 'System Admin': 'Platform overview', 'IT Manager': 'Support overview', Technician: 'My queue', Employee: 'My requests', 'Asset Manager': 'Asset overview' }
 
 function initials(name = '') {
@@ -366,7 +365,7 @@ function Empty({ message }) { return <div className="flex min-h-24 flex-col item
 
 function ResourceView({ title, items, busy, onCreate, allowUserCreate, canDeleteUsers, onUserDelete, canManageAssets, onAssetLifecycle }) {
     const fields = items.length ? Object.keys(items[0]).filter((key) => !['_id', '__v', 'history', 'passwordHash', 'updatedAt', 'createdAt'].includes(key)).slice(0, 6) : []
-    const canCreate = ['Assets', 'Vendors', 'Knowledge', 'Departments', 'Categories', 'SLA policies'].includes(title) || (title === 'People' && allowUserCreate)
+    const canCreate = ['Assets', 'Knowledge', 'Departments', 'Categories', 'SLA policies'].includes(title) || (title === 'People' && allowUserCreate)
     return <><PageHeading eyebrow="Service management" title={title} description={`Manage ${title.toLowerCase()} in your organization.`} action={canCreate && <ActionButton onClick={onCreate}><Plus size={15} />Add {title === 'Knowledge' ? 'article' : title === 'SLA policies' ? 'policy' : title === 'People' ? 'user' : title.slice(0, -1)}</ActionButton>} />
         <section className="overflow-hidden rounded-md border border-[#e0e6e7] bg-white">{busy && !items.length ? <div className="p-10"><Empty message="Loading records…" /></div> : !items.length ? <div className="p-12"><Empty message={`No ${title.toLowerCase()} found.`} /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left"><thead className="bg-[#f8f9f9] text-[10px] font-semibold uppercase tracking-[0.1em] text-[#879498]"><tr>{fields.map((field) => <th key={field} className="px-5 py-3">{field.replace(/([A-Z])/g, ' $1')}</th>)}{title === 'Assets' && canManageAssets && <th className="px-5 py-3">Lifecycle</th>}{title === 'People' && canDeleteUsers && <th className="px-5 py-3">Actions</th>}</tr></thead><tbody className="divide-y divide-[#edf0f0]">{items.map((item) => <tr key={item._id}>{fields.map((field) => <td key={field} className="max-w-[260px] truncate px-5 py-3.5 text-xs text-[#526167]">{typeof item[field] === 'object' ? item[field]?.name || JSON.stringify(item[field]) : String(item[field] ?? '—')}</td>)}{title === 'Assets' && canManageAssets && <td className="px-5 py-2"><select aria-label={`Change ${item.name} lifecycle`} value={item.status || 'Available'} onChange={(event) => onAssetLifecycle(item, event.target.value)} className="h-8 rounded border border-[#dce3e3] bg-white px-2 text-[11px] text-[#536267]">{['Available', 'Under Repair', 'Lost', 'Damaged', 'Retired'].map((status) => <option key={status}>{status}</option>)}</select></td>}{title === 'People' && canDeleteUsers && <td className="px-5 py-2"><button type="button" disabled={item.role === 'System Admin'} title={item.role === 'System Admin' ? 'The sole System Admin account cannot be deleted' : `Delete ${item.name}`} aria-label={`Delete ${item.name}`} onClick={() => onUserDelete(item)} className="grid size-8 place-items-center rounded text-[#a4443d] hover:bg-[#fff1ef] disabled:cursor-not-allowed disabled:opacity-30"><Trash2 size={15} /></button></td>}</tr>)}</tbody></table></div>}</section></>
 }
@@ -548,7 +547,7 @@ function ResourceModal({ title, onClose, onSubmit }) {
     const [form, setForm] = useState({})
     const [departments, setDepartments] = useState([])
     useEffect(() => { if (title === 'People') api.get('/departments').then(({ data }) => setDepartments(data.items)).catch(() => { }) }, [title])
-    const fields = title === 'Assets' ? ['assetId', 'name', 'type', 'brand', 'serialNumber', 'warrantyEnd'] : title === 'Vendors' ? ['name', 'contactPerson', 'email', 'phone', 'website'] : title === 'Knowledge' ? ['title', 'category', 'problem', 'solution', 'tags'] : title === 'People' ? ['name', 'email', 'role', 'department', 'password'] : title === 'Categories' ? ['name', 'subcategories'] : title === 'SLA policies' ? ['name', 'priority', 'responseMinutes', 'resolutionMinutes'] : ['name', 'description']
+    const fields = title === 'Assets' ? ['assetId', 'name', 'type', 'brand', 'serialNumber', 'warrantyEnd'] : title === 'Knowledge' ? ['title', 'category', 'problem', 'solution', 'tags'] : title === 'People' ? ['name', 'email', 'role', 'department', 'password'] : title === 'Categories' ? ['name', 'subcategories'] : title === 'SLA policies' ? ['name', 'priority', 'responseMinutes', 'resolutionMinutes'] : ['name', 'description']
     function submitForm(event) {
         event.preventDefault()
         const payload = { ...form }

@@ -1,9 +1,39 @@
 const bcrypt = require('bcryptjs')
+const mongoose = require('mongoose')
 const connectDatabase = require('../config/database')
-const { Asset, Category, Counter, Department, KnowledgeArticle, SLA, Ticket, User, Vendor, systemAdminEmail } = require('../models')
+const { Asset, AssetRequest, AuditLog, Category, Comment, Counter, Department, KnowledgeArticle, Notification, SLA, Ticket, User, WorkLog, systemAdminEmail } = require('../models')
 
 async function run() {
     await connectDatabase()
+    const activeRequests = await AssetRequest.find({ status: { $in: ['Pending', 'Approved', 'Return Requested'] } }).select('asset employee')
+    for (const request of activeRequests) {
+        const released = await Asset.findOneAndUpdate(
+            {
+                _id: request.asset,
+                $or: [
+                    { status: 'Requested' },
+                    { status: 'Assigned', employee: request.employee },
+                ],
+            },
+            {
+                $set: { status: 'Available', employee: null, department: null },
+                $push: { history: { action: 'temporary loan cleared during demo reset', at: new Date() } },
+            },
+        )
+        if (released) console.info(`Released temporary loan asset ${released.assetId}`)
+    }
+    await Promise.all([
+        AssetRequest.deleteMany({}),
+        Comment.deleteMany({}),
+        Ticket.deleteMany({}),
+        WorkLog.deleteMany({}),
+        AuditLog.deleteMany({ entity: { $in: ['Ticket', 'AssetRequest'] } }),
+        Notification.deleteMany({ entityType: { $in: ['Ticket', 'AssetRequest'] } }),
+        Counter.deleteMany({ _id: 'ticket' }),
+    ])
+    await mongoose.connection.collection('vendors').deleteMany({})
+    await Asset.updateMany({}, { $unset: { vendor: '' } })
+
     const departments = {}
     for (const name of ['IT', 'HR', 'Finance', 'Marketing', 'Sales', 'Operations']) {
         departments[name] = await Department.findOneAndUpdate({ name }, { $setOnInsert: { name } }, { upsert: true, new: true })
@@ -17,9 +47,8 @@ async function run() {
             await existingAdmin.save()
         }
     }
-    await User.updateMany({ role: 'System Admin', email: { $ne: systemAdminEmail } }, { $set: { role: 'Employee' } })
     const users = {
-        'System Admin': await User.findOneAndUpdate({ email: systemAdminEmail }, { $set: { email: systemAdminEmail, role: 'System Admin', name: 'Avery Morgan', department: departments.IT.id, passwordHash: adminPasswordHash, title: 'System Admin', active: true } }, { upsert: true, new: true }),
+        'System Admin': await User.findOneAndUpdate({ email: systemAdminEmail }, { $set: { email: systemAdminEmail, role: 'System Admin', name: 'Ayush Darne', department: departments.IT.id, passwordHash: adminPasswordHash, title: 'System Admin', active: true } }, { upsert: true, new: true }),
     }
     const accounts = [
         ['manager@servicedesk.com', 'IT Manager', 'Jordan Lee', 'IT'],
@@ -31,32 +60,60 @@ async function run() {
     for (const [email, role, name, department] of accounts) {
         users[role] = await User.findOneAndUpdate({ email }, { $setOnInsert: { email, role, name, department: departments[department].id, passwordHash, title: role } }, { upsert: true, new: true })
     }
-    const categoryNames = ['Hardware', 'Software', 'Network', 'Email', 'Security', 'Access Management', 'Printer', 'VPN', 'Other']
+    const categoryNames = [
+        'Hardware',
+        'Software',
+        'Network',
+        'Email',
+        'Security',
+        'Access Management',
+        'Printer',
+        'VPN',
+        'Laptop',
+        'Headset',
+        'Mouse',
+        'CPU / Desktop',
+        'Keyboard',
+        'Monitor',
+        'Webcam',
+        'Docking Station',
+        'Tablet',
+        'Mobile Phone',
+        'Other',
+    ]
     const categories = {}
     for (const name of categoryNames) categories[name] = await Category.findOneAndUpdate({ name }, { $setOnInsert: { name, subcategories: [name === 'Hardware' ? 'Laptop' : name === 'Network' ? 'Connectivity' : 'General'], active: true } }, { upsert: true, new: true })
     const slaByPriority = {}
     for (const [priority, responseMinutes, resolutionMinutes] of [['Low', 480, 2880], ['Medium', 240, 1440], ['High', 60, 480], ['Critical', 15, 120]]) {
         slaByPriority[priority] = await SLA.findOneAndUpdate({ name: `${priority} priority`, priority }, { $setOnInsert: { name: `${priority} priority`, priority, responseMinutes, resolutionMinutes, active: true } }, { upsert: true, new: true })
     }
-    const vendor = await Vendor.findOneAndUpdate({ name: 'Northstar Technology' }, { $setOnInsert: { name: 'Northstar Technology', contactPerson: 'Morgan Blake', email: 'support@northstar.example', productsServices: ['Laptops', 'Warranty repair'] } }, { upsert: true, new: true })
-    await Asset.findOneAndUpdate({ assetId: 'AST-000001' }, { $setOnInsert: { assetId: 'AST-000001', name: 'ThinkPad X1 Carbon', type: 'Laptop', brand: 'Lenovo', status: 'Assigned', employee: users.Employee.id, department: departments.Finance.id, vendor: vendor.id, warrantyEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 180), serialNumber: 'SDP-DEMO-001' } }, { upsert: true })
-    await Asset.findOneAndUpdate({ assetId: 'AST-000002' }, { $setOnInsert: { assetId: 'AST-000002', name: 'Dell UltraSharp 27', type: 'Monitor', brand: 'Dell', status: 'Available', vendor: vendor.id, serialNumber: 'SDP-DEMO-002' } }, { upsert: true })
-    await KnowledgeArticle.findOneAndUpdate({ title: 'Reconnect to the company VPN' }, { $setOnInsert: { title: 'Reconnect to the company VPN', category: 'VPN', problem: 'VPN connection fails after a password change.', solution: 'Remove the saved VPN credentials, sign in with your current password, then reconnect.', tags: ['vpn', 'password', 'network'], author: users.Technician.id, status: 'Published' } }, { upsert: true })
-    const samples = [
-        ['VPN disconnects after sign-in', 'The VPN client closes shortly after I connect from home.', 'High', 'VPN', 'In Progress', users.Technician.id],
-        ['Laptop camera is not detected', 'The camera stopped appearing in video meeting apps this morning.', 'Medium', 'Hardware', 'Open', null],
-        ['Request access to finance folder', 'Please restore my access to the quarterly planning folder.', 'Low', 'Access Management', 'Resolved', users.Technician.id],
+    const catalog = [
+        ['AST-000001', 'ThinkPad X1 Carbon', 'Laptop', 'Lenovo', 'SDP-DEMO-001'],
+        ['AST-000002', 'Dell UltraSharp 27', 'Monitor', 'Dell', 'SDP-DEMO-002'],
+        ['AST-000003', 'Latitude 5450', 'Laptop', 'Dell', 'SDP-DEMO-003'],
+        ['AST-000004', 'ProBook 440 G10', 'Laptop', 'HP', 'SDP-DEMO-004'],
+        ['AST-000005', 'USB-C Docking Station', 'Dock', 'Lenovo', 'SDP-DEMO-005'],
+        ['AST-000006', 'Noise-cancelling Headset', 'Headset', 'Jabra', 'SDP-DEMO-006'],
+        ['AST-000007', 'Wireless Keyboard and Mouse Set', 'Peripherals', 'Logitech', 'SDP-DEMO-007'],
+        ['AST-000008', '1080p Webcam', 'Webcam', 'Logitech', 'SDP-DEMO-008'],
+        ['AST-000009', 'EliteBook 840 G10', 'Laptop', 'HP', 'SDP-DEMO-009'],
+        ['AST-000010', 'ThinkVision T24i-30', 'Monitor', 'Lenovo', 'SDP-DEMO-010'],
+        ['AST-000011', 'USB-C Universal Dock', 'Dock', 'Dell', 'SDP-DEMO-011'],
+        ['AST-000012', 'Jabra Evolve2 40 Headset', 'Headset', 'Jabra', 'SDP-DEMO-012'],
+        ['AST-000013', 'MX Master 3S Mouse', 'Mouse', 'Logitech', 'SDP-DEMO-013'],
+        ['AST-000014', 'K380 Bluetooth Keyboard', 'Keyboard', 'Logitech', 'SDP-DEMO-014'],
+        ['AST-000015', 'Portable 1TB SSD', 'Storage', 'Samsung', 'SDP-DEMO-015'],
+        ['AST-000016', '1080p USB Conference Camera', 'Webcam', 'Logitech', 'SDP-DEMO-016'],
     ]
-    for (let index = 0; index < samples.length; index += 1) {
-        const [title, description, priority, category, status, assignedTo] = samples[index]
-        const ticketId = `SD-${new Date().getFullYear()}-${String(index + 1).padStart(6, '0')}`
-        await Ticket.findOneAndUpdate({ ticketId }, { $setOnInsert: { ticketId, title, description, priority, status, category: categories[category].id, employee: users.Employee.id, department: departments.Finance.id, assignedTo, sla: slaByPriority[priority].id, responseDueAt: new Date(Date.now() + 1000 * 60 * 60), resolutionDueAt: new Date(Date.now() + 1000 * 60 * 60 * 8), history: [] } }, { upsert: true })
+    for (const [assetId, name, type, brand, serialNumber] of catalog) {
+        await Asset.findOneAndUpdate(
+            { assetId },
+            { $setOnInsert: { assetId, name, type, brand, serialNumber, status: 'Available', condition: 'Good' } },
+            { upsert: true, new: true },
+        )
     }
-    const currentYear = new Date().getFullYear()
-    const yearTickets = await Ticket.find({ ticketId: new RegExp(`^SD-${currentYear}-\\d+$`) }).select('ticketId')
-    const highestTicketNumber = yearTickets.reduce((highest, ticket) => Math.max(highest, Number(ticket.ticketId.split('-').at(-1)) || 0), samples.length)
-    await Counter.findByIdAndUpdate('ticket', { $max: { value: highestTicketNumber } }, { upsert: true, new: true })
-    console.info(`Demo data ready. System Admin: ${systemAdminEmail} / system@123. Other demo accounts use password: ServiceDesk!2026`)
+    await KnowledgeArticle.findOneAndUpdate({ title: 'Reconnect to the company VPN' }, { $setOnInsert: { title: 'Reconnect to the company VPN', category: 'VPN', problem: 'VPN connection fails after a password change.', solution: 'Remove the saved VPN credentials, sign in with your current password, then reconnect.', tags: ['vpn', 'password', 'network'], author: users.Technician.id, status: 'Published' } }, { upsert: true })
+    console.info(`Demo data refreshed: tickets and asset requests cleared, users and existing assets retained, and ${catalog.length} catalog assets ensured. System Admin: ${systemAdminEmail} / system@123. Other demo accounts use password: ServiceDesk!2026`)
     await require('mongoose').disconnect()
 }
 

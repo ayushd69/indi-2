@@ -65,8 +65,7 @@ const ticketSchema = new Schema({
 ticketSchema.index({ status: 1, priority: 1, department: 1, createdAt: -1 })
 ticketSchema.index({ title: 'text', description: 'text', ticketId: 'text' })
 
-const assetSchema = new Schema({ assetId: { type: String, unique: true }, name: { type: String, required: true }, type: String, category: String, brand: String, model: String, serialNumber: String, purchaseDate: Date, purchasePrice: Number, vendor: { type: Schema.Types.ObjectId, ref: 'Vendor' }, warrantyStart: Date, warrantyEnd: Date, employee: { type: Schema.Types.ObjectId, ref: 'User' }, department: { type: Schema.Types.ObjectId, ref: 'Department' }, location: String, condition: String, status: { type: String, enum: ['Available', 'Requested', 'Assigned', 'Under Repair', 'Lost', 'Damaged', 'Retired'], default: 'Available' }, notes: String, history: [Schema.Types.Mixed] }, baseOptions)
-const vendorSchema = new Schema({ name: { type: String, required: true }, contactPerson: String, email: String, phone: String, address: String, website: String, productsServices: [String], notes: String }, baseOptions)
+const assetSchema = new Schema({ assetId: { type: String, unique: true }, name: { type: String, required: true }, type: String, category: String, brand: String, model: String, serialNumber: String, purchaseDate: Date, purchasePrice: Number, warrantyStart: Date, warrantyEnd: Date, employee: { type: Schema.Types.ObjectId, ref: 'User' }, department: { type: Schema.Types.ObjectId, ref: 'Department' }, location: String, condition: String, status: { type: String, enum: ['Available', 'Requested', 'Assigned', 'Under Repair', 'Lost', 'Damaged', 'Retired'], default: 'Available' }, notes: String, history: [Schema.Types.Mixed] }, baseOptions)
 const articleSchema = new Schema({ title: { type: String, required: true }, category: String, problem: String, solution: String, tags: [String], author: { type: Schema.Types.ObjectId, ref: 'User' }, status: { type: String, enum: ['Draft', 'Published', 'Archived'], default: 'Draft' } }, baseOptions)
 articleSchema.index({ title: 'text', problem: 'text', solution: 'text', tags: 'text' })
 const notificationSchema = new Schema({ recipient: { type: Schema.Types.ObjectId, ref: 'User', required: true }, title: String, message: String, type: String, entityType: String, entityId: Schema.Types.ObjectId, readAt: Date }, baseOptions)
@@ -88,7 +87,6 @@ module.exports = {
     SLA: model('SLA', slaSchema),
     Ticket: model('Ticket', ticketSchema),
     User: model('User', userSchema),
-    Vendor: model('Vendor', vendorSchema),
     WorkLog: model('WorkLog', workLogSchema),
     Asset: model('Asset', assetSchema),
     AssetRequest: model('AssetRequest', assetRequestSchema),
