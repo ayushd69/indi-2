@@ -6,7 +6,7 @@ const { authenticate } = require('../middleware/auth')
 const { Department, User, roles, systemAdminEmail } = require('../models')
 
 const router = express.Router()
-const publicUser = (user) => ({ id: user.id, name: user.name, email: user.email, role: user.role, department: user.department, title: user.title })
+const publicUser = (user) => ({ id: user.id, name: user.name, email: user.email, role: user.role, requestedRole: user.requestedRole, department: user.department, title: user.title })
 
 function issueToken(user) {
     const departmentId = user.department?._id?.toString() || user.department?.toString()
@@ -30,8 +30,13 @@ router.post('/register', async (req, res, next) => {
         const name = String(body.name || '').trim()
         const email = String(body.email || '').trim().toLowerCase()
         const password = String(body.password || '')
+        const requestedRole = body.role || 'Employee'
+        const registrableRoles = ['Employee', 'Technician', 'IT Manager', 'Asset Manager']
         if (name.length < 2 || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
             return res.status(400).json({ error: { message: 'Enter a name, valid email, and password between 8 and 72 bytes.' } })
+        }
+        if (!registrableRoles.includes(requestedRole)) {
+            return res.status(400).json({ error: { message: 'Choose a valid account role.' } })
         }
         if (email === systemAdminEmail) {
             return res.status(409).json({ error: { message: 'This email address cannot be registered.' } })
@@ -46,8 +51,12 @@ router.post('/register', async (req, res, next) => {
             passwordHash: await bcrypt.hash(password, 12),
             role: 'Employee',
             title: 'Employee',
+            ...(requestedRole !== 'Employee' ? { requestedRole } : {}),
         })
-        return res.status(201).json({ token: issueToken(user), user: publicUser(user) })
+        const message = requestedRole === 'Employee'
+            ? 'Account created with Employee access.'
+            : `Account created with Employee access. Your ${requestedRole} role request is pending admin approval.`
+        return res.status(201).json({ token: issueToken(user), user: publicUser(user), message })
     } catch (error) { return next(error) }
 })
 

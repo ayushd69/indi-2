@@ -88,17 +88,31 @@ function App() {
         } finally { setBusy(false) }
     }
 
-    async function register(name, email, password) {
+    async function register(name, email, password, role) {
         setBusy(true)
         setError('')
         try {
-            const { data } = await api.post('/auth/register', { name, email, password })
+            const { data } = await api.post('/auth/register', { name, email, password, role })
             localStorage.setItem('servicedesk.token', data.token)
             setUser(data.user)
             setPage('Overview')
+            setToast(data.message)
         } catch (requestError) {
             setError(requestError.response?.data?.error?.message || 'Sign up failed')
         } finally { setBusy(false) }
+    }
+
+    async function reviewRoleRequest(item, approve) {
+        try {
+            await api.patch(`/users/${item._id}`, approve
+                ? { role: item.requestedRole, requestedRole: null }
+                : { requestedRole: null })
+            const { data } = await api.get('/users?limit=100')
+            setItems(data.items)
+            setToast(approve ? `${item.requestedRole} access approved` : 'Role request declined')
+        } catch (requestError) {
+            setError(requestError.response?.data?.error?.message || 'Could not update role request')
+        }
     }
 
     function logout() {
@@ -262,7 +276,7 @@ function App() {
                     {page === 'Overview' && <Dashboard user={user} stats={stats} tickets={tickets} busy={busy} onCreate={user.role === 'Employee' ? () => setModal('ticket') : null} onSelect={setSelected} onNavigate={setPage} />}
                     {page === 'Tickets' && <TicketsView tickets={visibleTickets} busy={busy} onCreate={user.role === 'Employee' ? () => setModal('ticket') : null} onSelect={setSelected} />}
                     {page === 'Assets' && <AssetsView user={user} items={items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase()))} requests={assetRequests} tickets={tickets} busy={busy} onCreate={() => setModal('resource')} onRequest={requestAsset} onDecision={reviewAssetRequest} onReturn={requestAssetReturn} onReceive={receiveAssetReturn} onLifecycle={changeAssetLifecycle} />}
-                    {apiPath[page] && page !== 'Assets' && <ResourceView title={page} items={items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase()))} busy={busy} onCreate={() => setModal('resource')} allowUserCreate={user.role === 'System Admin'} canDeleteUsers={user.role === 'System Admin'} onUserDelete={deleteUser} />}
+                    {apiPath[page] && page !== 'Assets' && <ResourceView title={page} items={items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase()))} busy={busy} onCreate={() => setModal('resource')} allowUserCreate={user.role === 'System Admin'} canDeleteUsers={user.role === 'System Admin'} onUserDelete={deleteUser} onRoleRequest={reviewRoleRequest} />}
                     {page === 'Notifications' && <NotificationsView items={notifications} onReadAll={markAllRead} />}
                     {page === 'Reports' && <ReportsView tickets={tickets} stats={stats} />}
                     {page === 'Profile' && <ProfileView user={user} />}
@@ -282,6 +296,7 @@ function LoginScreen({ onLogin, onRegister, error, busy }) {
     const [name, setName] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const [role, setRole] = useState('Employee')
     return <div className="grid min-h-screen bg-[#f3f6f5] lg:grid-cols-[1.12fr_0.88fr]">
         <section className="relative hidden overflow-hidden bg-[#123d3b] px-14 py-12 text-white lg:flex lg:flex-col lg:justify-between xl:px-20">
             <div className="absolute -right-36 -top-24 size-[520px] rounded-full border border-white/10" /><div className="absolute -right-16 -top-4 size-[360px] rounded-full border border-white/10" />
@@ -292,10 +307,11 @@ function LoginScreen({ onLogin, onRegister, error, busy }) {
         <section className="flex items-center justify-center px-6 py-12">
             <div className="w-full max-w-[390px]">
                 <div className="mb-9 flex items-center gap-3 lg:hidden"><span className="grid size-9 place-items-center rounded-md bg-[#137c70] text-xs font-semibold text-white">SD</span><span className="font-semibold">ServiceDesk Pro</span></div>
-                <div className="mb-8"><div className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[#137c70]">{registering ? 'Create an account' : 'Welcome back'}</div><h2 className="text-[28px] font-semibold tracking-normal text-[#202b33]">{registering ? 'Sign up for your workspace' : 'Sign in to your workspace'}</h2><p className="mt-2 text-sm text-[#718086]">{registering ? 'New accounts start with Employee access.' : 'Use your work account to continue.'}</p></div>
-                <form onSubmit={(event) => { event.preventDefault(); registering ? onRegister(name, email, password) : onLogin(email, password) }} className="space-y-5">
+                <div className="mb-8"><div className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[#137c70]">{registering ? 'Create an account' : 'Welcome back'}</div><h2 className="text-[28px] font-semibold tracking-normal text-[#202b33]">{registering ? 'Sign up for your workspace' : 'Sign in to your workspace'}</h2><p className="mt-2 text-sm text-[#718086]">{registering ? 'Choose the role you want to request. Employee access is active until an admin approves any elevated role.' : 'Use your work account to continue.'}</p></div>
+                <form onSubmit={(event) => { event.preventDefault(); registering ? onRegister(name, email, password, role) : onLogin(email, password) }} className="space-y-5">
                     {registering && <label className="block text-xs font-semibold text-[#425158]">Full name<input type="text" autoComplete="name" minLength={2} maxLength={100} required value={name} onChange={(event) => setName(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-[#d9e0e1] bg-white px-3 text-sm font-normal outline-none focus:border-[#168477] focus:ring-2 focus:ring-[#168477]/10" /></label>}
                     <label className="block text-xs font-semibold text-[#425158]">Work email<input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-[#d9e0e1] bg-white px-3 text-sm font-normal outline-none focus:border-[#168477] focus:ring-2 focus:ring-[#168477]/10" /></label>
+                    {registering && <label className="block text-xs font-semibold text-[#425158]">Role request<select value={role} onChange={(event) => setRole(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-[#d9e0e1] bg-white px-3 text-sm font-normal outline-none focus:border-[#168477] focus:ring-2 focus:ring-[#168477]/10"><option value="Employee">Employee</option><option value="Technician">Technician</option><option value="IT Manager">IT Manager</option><option value="Asset Manager">Asset Manager</option></select></label>}
                     <label className="block text-xs font-semibold text-[#425158]">Password<input type="password" autoComplete={registering ? 'new-password' : 'current-password'} minLength={registering ? 8 : undefined} maxLength={registering ? 72 : undefined} required value={password} onChange={(event) => setPassword(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-[#d9e0e1] bg-white px-3 text-sm font-normal outline-none focus:border-[#168477] focus:ring-2 focus:ring-[#168477]/10" />{registering && <span className="mt-1 block font-normal text-[#718086]">Use at least 8 characters.</span>}</label>
                     {error && <p className="rounded-md bg-[#fff1ef] px-3 py-2 text-xs text-[#a4443d]">{error}</p>}
                     <button disabled={busy} className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#137c70] text-sm font-semibold text-white hover:bg-[#0d6d62] disabled:opacity-60">{busy ? registering ? 'Creating account…' : 'Signing in…' : registering ? 'Create account' : 'Sign in'}<Send size={15} /></button>
@@ -380,11 +396,11 @@ function Badge({ value }) {
 
 function Empty({ message }) { return <div className="flex min-h-24 flex-col items-center justify-center gap-2 text-center text-xs text-[#89969a]"><CircleHelp size={19} strokeWidth={1.5} />{message}</div> }
 
-function ResourceView({ title, items, busy, onCreate, allowUserCreate, canDeleteUsers, onUserDelete, canManageAssets, onAssetLifecycle }) {
+function ResourceView({ title, items, busy, onCreate, allowUserCreate, canDeleteUsers, onUserDelete, onRoleRequest, canManageAssets, onAssetLifecycle }) {
     const fields = items.length ? Object.keys(items[0]).filter((key) => !['_id', '__v', 'history', 'passwordHash', 'updatedAt', 'createdAt'].includes(key)).slice(0, 6) : []
     const canCreate = ['Assets', 'Knowledge', 'Departments', 'Categories', 'SLA policies'].includes(title) || (title === 'People' && allowUserCreate)
     return <><PageHeading eyebrow="Service management" title={title} description={`Manage ${title.toLowerCase()} in your organization.`} action={canCreate && <ActionButton onClick={onCreate}><Plus size={15} />Add {title === 'Knowledge' ? 'article' : title === 'SLA policies' ? 'policy' : title === 'People' ? 'user' : title.slice(0, -1)}</ActionButton>} />
-        <section className="overflow-hidden rounded-md border border-[#e0e6e7] bg-white">{busy && !items.length ? <div className="p-10"><Empty message="Loading records…" /></div> : !items.length ? <div className="p-12"><Empty message={`No ${title.toLowerCase()} found.`} /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left"><thead className="bg-[#f8f9f9] text-[10px] font-semibold uppercase tracking-[0.1em] text-[#879498]"><tr>{fields.map((field) => <th key={field} className="px-5 py-3">{field.replace(/([A-Z])/g, ' $1')}</th>)}{title === 'Assets' && canManageAssets && <th className="px-5 py-3">Lifecycle</th>}{title === 'People' && canDeleteUsers && <th className="px-5 py-3">Actions</th>}</tr></thead><tbody className="divide-y divide-[#edf0f0]">{items.map((item) => <tr key={item._id}>{fields.map((field) => <td key={field} className="max-w-[260px] truncate px-5 py-3.5 text-xs text-[#526167]">{typeof item[field] === 'object' ? item[field]?.name || JSON.stringify(item[field]) : String(item[field] ?? '—')}</td>)}{title === 'Assets' && canManageAssets && <td className="px-5 py-2"><select aria-label={`Change ${item.name} lifecycle`} value={item.status || 'Available'} onChange={(event) => onAssetLifecycle(item, event.target.value)} className="h-8 rounded border border-[#dce3e3] bg-white px-2 text-[11px] text-[#536267]">{['Available', 'Under Repair', 'Lost', 'Damaged', 'Retired'].map((status) => <option key={status}>{status}</option>)}</select></td>}{title === 'People' && canDeleteUsers && <td className="px-5 py-2"><button type="button" disabled={item.role === 'System Admin'} title={item.role === 'System Admin' ? 'The sole System Admin account cannot be deleted' : `Delete ${item.name}`} aria-label={`Delete ${item.name}`} onClick={() => onUserDelete(item)} className="grid size-8 place-items-center rounded text-[#a4443d] hover:bg-[#fff1ef] disabled:cursor-not-allowed disabled:opacity-30"><Trash2 size={15} /></button></td>}</tr>)}</tbody></table></div>}</section></>
+        <section className="overflow-hidden rounded-md border border-[#e0e6e7] bg-white">{busy && !items.length ? <div className="p-10"><Empty message="Loading records…" /></div> : !items.length ? <div className="p-12"><Empty message={`No ${title.toLowerCase()} found.`} /></div> : <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left"><thead className="bg-[#f8f9f9] text-[10px] font-semibold uppercase tracking-[0.1em] text-[#879498]"><tr>{fields.map((field) => <th key={field} className="px-5 py-3">{field === 'requestedRole' ? 'Role request' : field.replace(/([A-Z])/g, ' $1')}</th>)}{title === 'Assets' && canManageAssets && <th className="px-5 py-3">Lifecycle</th>}{title === 'People' && canDeleteUsers && <th className="px-5 py-3">Actions</th>}</tr></thead><tbody className="divide-y divide-[#edf0f0]">{items.map((item) => <tr key={item._id}>{fields.map((field) => <td key={field} className="max-w-[260px] truncate px-5 py-3.5 text-xs text-[#526167]">{field === 'requestedRole' ? item[field] || '—' : typeof item[field] === 'object' ? item[field]?.name || JSON.stringify(item[field]) : String(item[field] ?? '—')}</td>)}{title === 'Assets' && canManageAssets && <td className="px-5 py-2"><select aria-label={`Change ${item.name} lifecycle`} value={item.status || 'Available'} onChange={(event) => onAssetLifecycle(item, event.target.value)} className="h-8 rounded border border-[#dce3e3] bg-white px-2 text-[11px] text-[#536267]">{['Available', 'Under Repair', 'Lost', 'Damaged', 'Retired'].map((status) => <option key={status}>{status}</option>)}</select></td>}{title === 'People' && canDeleteUsers && <td className="px-5 py-2"><div className="flex items-center gap-1">{item.requestedRole && <><button type="button" title={`Approve ${item.requestedRole} access for ${item.name}`} aria-label={`Approve ${item.requestedRole} access for ${item.name}`} onClick={() => onRoleRequest(item, true)} className="rounded px-2 py-1 text-[10px] font-semibold text-[#137c70] hover:bg-[#e8f4f1]">Approve {item.requestedRole}</button><button type="button" title={`Decline ${item.name}'s role request`} aria-label={`Decline ${item.name}'s role request`} onClick={() => onRoleRequest(item, false)} className="rounded p-1 text-[#a4443d] hover:bg-[#fff1ef]"><X size={14} /></button></>}<button type="button" disabled={item.role === 'System Admin'} title={item.role === 'System Admin' ? 'The sole System Admin account cannot be deleted' : `Delete ${item.name}`} aria-label={`Delete ${item.name}`} onClick={() => onUserDelete(item)} className="grid size-8 place-items-center rounded text-[#a4443d] hover:bg-[#fff1ef] disabled:cursor-not-allowed disabled:opacity-30"><Trash2 size={15} /></button></div></td>}</tr>)}</tbody></table></div>}</section></>
 }
 
 function AssetsView({ user, items, requests, tickets, busy, onCreate, onRequest, onDecision, onReturn, onReceive, onLifecycle }) {

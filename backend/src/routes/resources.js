@@ -427,7 +427,7 @@ for (const [path, config] of Object.entries(resources)) {
             const previous = await model.findById(req.params.id)
             if (!previous) return res.status(404).json({ error: { message: 'Record not found' } })
             const changes = path === 'users'
-                ? Object.fromEntries(['name', 'email', 'role', 'department', 'title', 'phone', 'active'].filter((field) => req.body[field] !== undefined).map((field) => [field, req.body[field]]))
+                ? Object.fromEntries(['name', 'email', 'role', 'requestedRole', 'department', 'title', 'phone', 'active'].filter((field) => req.body[field] !== undefined).map((field) => [field, req.body[field]]))
                 : path === 'assets'
                     ? Object.fromEntries(['assetId', 'name', 'type', 'category', 'brand', 'model', 'serialNumber', 'purchaseDate', 'purchasePrice', 'warrantyStart', 'warrantyEnd', 'location', 'condition', 'notes'].filter((field) => req.body[field] !== undefined).map((field) => [field, req.body[field]]))
                     : req.body

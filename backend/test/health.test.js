@@ -53,6 +53,18 @@ test('public registration rejects a body without account fields', async () => {
     assert.match(payload.error.message, /name, valid email/i)
 })
 
+test('public registration cannot request the System Admin role', async () => {
+    const response = await fetch(`${baseUrl}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'New User', email: 'new@example.com', password: 'long-enough-password', role: 'System Admin' }),
+    })
+    const payload = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.match(payload.error.message, /valid account role/i)
+})
+
 test('user creation requires authentication', async () => {
     const response = await fetch(`${baseUrl}/api/users`, {
         method: 'POST',

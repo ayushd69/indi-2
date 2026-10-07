@@ -54,7 +54,7 @@ The sole System Admin account uses `system@gmail.com` / `system@123` when provis
 
 ## Working modules
 
-- JWT login, public employee self-registration plus admin-provisioned accounts with bcrypt, five roles, department-scoped ticket access, and role-aware navigation.
+- JWT login, public employee self-registration with optional privileged-role requests requiring System Admin approval, plus admin-provisioned accounts with bcrypt, five roles, department-scoped ticket access, and role-aware navigation.
 - Ticket creation, search/filter, unique yearly IDs, manager assignment requests with technician acceptance/decline reasons, role-specific status lifecycle, comments, internal notes, shared work-progress logs, escalation, SLA deadlines and history.
 - SLA at-risk alerts and breach escalation checked once per minute; policies are configurable by priority.
 - Temporary asset loans: employees can request available equipment with a reason and optional repair ticket; Asset Managers approve/decline, issue items with timestamps, and confirm returns before assets become available again. Managers can review department assignments and loan history.

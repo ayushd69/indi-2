@@ -10,6 +10,7 @@ const userSchema = new Schema({
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: roles, default: 'Employee' },
+    requestedRole: { type: String, enum: ['IT Manager', 'Technician', 'Employee', 'Asset Manager'] },
     department: { type: Schema.Types.ObjectId, ref: 'Department' },
     title: String,
     phone: String,
