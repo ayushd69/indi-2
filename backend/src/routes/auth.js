@@ -24,8 +24,31 @@ router.post('/login', async (req, res, next) => {
     } catch (error) { return next(error) }
 })
 
-router.post('/register', (req, res) => {
-    return res.status(403).json({ error: { message: 'Self-registration is disabled. Contact the System Admin to create an account.' } })
+router.post('/register', async (req, res, next) => {
+    try {
+        const body = req.body && typeof req.body === 'object' ? req.body : {}
+        const name = String(body.name || '').trim()
+        const email = String(body.email || '').trim().toLowerCase()
+        const password = String(body.password || '')
+        if (name.length < 2 || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
+            return res.status(400).json({ error: { message: 'Enter a name, valid email, and password between 8 and 72 bytes.' } })
+        }
+        if (email === systemAdminEmail) {
+            return res.status(409).json({ error: { message: 'This email address cannot be registered.' } })
+        }
+        if (await User.exists({ email })) {
+            return res.status(409).json({ error: { message: 'An account with this email already exists.' } })
+        }
+
+        const user = await User.create({
+            name,
+            email,
+            passwordHash: await bcrypt.hash(password, 12),
+            role: 'Employee',
+            title: 'Employee',
+        })
+        return res.status(201).json({ token: issueToken(user), user: publicUser(user) })
+    } catch (error) { return next(error) }
 })
 
 router.get('/me', authenticate, async (req, res, next) => {

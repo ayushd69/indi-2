@@ -88,6 +88,19 @@ function App() {
         } finally { setBusy(false) }
     }
 
+    async function register(name, email, password) {
+        setBusy(true)
+        setError('')
+        try {
+            const { data } = await api.post('/auth/register', { name, email, password })
+            localStorage.setItem('servicedesk.token', data.token)
+            setUser(data.user)
+            setPage('Overview')
+        } catch (requestError) {
+            setError(requestError.response?.data?.error?.message || 'Sign up failed')
+        } finally { setBusy(false) }
+    }
+
     function logout() {
         localStorage.removeItem('servicedesk.token')
         setUser(null)
@@ -207,7 +220,7 @@ function App() {
         setToast('Notifications marked as read')
     }
 
-    if (!user) return <LoginScreen onLogin={login} error={error} busy={busy} />
+    if (!user) return <LoginScreen onLogin={login} onRegister={register} error={error} busy={busy} />
 
     const visibleNav = navigation.filter((item) => item.roles === '*' || item.roles.includes(user.role))
     const visibleTickets = tickets.filter((ticket) => `${ticket.ticketId} ${ticket.title} ${ticket.status} ${ticket.priority}`.toLowerCase().includes(query.toLowerCase()))
@@ -264,7 +277,9 @@ function App() {
     )
 }
 
-function LoginScreen({ onLogin, error, busy }) {
+function LoginScreen({ onLogin, onRegister, error, busy }) {
+    const [registering, setRegistering] = useState(false)
+    const [name, setName] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     return <div className="grid min-h-screen bg-[#f3f6f5] lg:grid-cols-[1.12fr_0.88fr]">
@@ -277,13 +292,15 @@ function LoginScreen({ onLogin, error, busy }) {
         <section className="flex items-center justify-center px-6 py-12">
             <div className="w-full max-w-[390px]">
                 <div className="mb-9 flex items-center gap-3 lg:hidden"><span className="grid size-9 place-items-center rounded-md bg-[#137c70] text-xs font-semibold text-white">SD</span><span className="font-semibold">ServiceDesk Pro</span></div>
-                <div className="mb-8"><div className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[#137c70]">Welcome back</div><h2 className="text-[28px] font-semibold tracking-normal text-[#202b33]">Sign in to your workspace</h2><p className="mt-2 text-sm text-[#718086]">Use your work account to continue.</p></div>
-                <form onSubmit={(event) => { event.preventDefault(); onLogin(email, password) }} className="space-y-5">
+                <div className="mb-8"><div className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-[#137c70]">{registering ? 'Create an account' : 'Welcome back'}</div><h2 className="text-[28px] font-semibold tracking-normal text-[#202b33]">{registering ? 'Sign up for your workspace' : 'Sign in to your workspace'}</h2><p className="mt-2 text-sm text-[#718086]">{registering ? 'New accounts start with Employee access.' : 'Use your work account to continue.'}</p></div>
+                <form onSubmit={(event) => { event.preventDefault(); registering ? onRegister(name, email, password) : onLogin(email, password) }} className="space-y-5">
+                    {registering && <label className="block text-xs font-semibold text-[#425158]">Full name<input type="text" autoComplete="name" minLength={2} maxLength={100} required value={name} onChange={(event) => setName(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-[#d9e0e1] bg-white px-3 text-sm font-normal outline-none focus:border-[#168477] focus:ring-2 focus:ring-[#168477]/10" /></label>}
                     <label className="block text-xs font-semibold text-[#425158]">Work email<input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-[#d9e0e1] bg-white px-3 text-sm font-normal outline-none focus:border-[#168477] focus:ring-2 focus:ring-[#168477]/10" /></label>
-                    <label className="block text-xs font-semibold text-[#425158]">Password<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-[#d9e0e1] bg-white px-3 text-sm font-normal outline-none focus:border-[#168477] focus:ring-2 focus:ring-[#168477]/10" /></label>
+                    <label className="block text-xs font-semibold text-[#425158]">Password<input type="password" autoComplete={registering ? 'new-password' : 'current-password'} minLength={registering ? 8 : undefined} maxLength={registering ? 72 : undefined} required value={password} onChange={(event) => setPassword(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-[#d9e0e1] bg-white px-3 text-sm font-normal outline-none focus:border-[#168477] focus:ring-2 focus:ring-[#168477]/10" />{registering && <span className="mt-1 block font-normal text-[#718086]">Use at least 8 characters.</span>}</label>
                     {error && <p className="rounded-md bg-[#fff1ef] px-3 py-2 text-xs text-[#a4443d]">{error}</p>}
-                    <button disabled={busy} className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#137c70] text-sm font-semibold text-white hover:bg-[#0d6d62] disabled:opacity-60">{busy ? 'Signing in…' : 'Sign in'}<Send size={15} /></button>
+                    <button disabled={busy} className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#137c70] text-sm font-semibold text-white hover:bg-[#0d6d62] disabled:opacity-60">{busy ? registering ? 'Creating account…' : 'Signing in…' : registering ? 'Create account' : 'Sign in'}<Send size={15} /></button>
                 </form>
+                <p className="mt-6 text-center text-sm text-[#718086]">{registering ? 'Already have an account?' : 'New to ServiceDesk Pro?'} <button type="button" disabled={busy} onClick={() => { setRegistering((value) => !value); setPassword('') }} className="font-semibold text-[#137c70] hover:text-[#0d6d62] disabled:opacity-60">{registering ? 'Sign in' : 'Create account'}</button></p>
             </div>
         </section>
     </div>

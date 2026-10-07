@@ -54,7 +54,7 @@ The System Admin account has dedicated credentials. All other demo accounts use 
 
 ## Working modules
 
-- JWT login, admin-provisioned user accounts with bcrypt, five roles, department-scoped ticket access, and role-aware navigation.
+- JWT login, public employee self-registration plus admin-provisioned accounts with bcrypt, five roles, department-scoped ticket access, and role-aware navigation.
 - Ticket creation, search/filter, unique yearly IDs, manager assignment requests with technician acceptance/decline reasons, role-specific status lifecycle, comments, internal notes, shared work-progress logs, escalation, SLA deadlines and history.
 - SLA at-risk alerts and breach escalation checked once per minute; policies are configurable by priority.
 - Temporary asset loans: employees can request available equipment with a reason and optional repair ticket; Asset Managers approve/decline, issue items with timestamps, and confirm returns before assets become available again. Managers can review department assignments and loan history.

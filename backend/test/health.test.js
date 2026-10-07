@@ -29,16 +29,28 @@ test('health reports a disconnected database and includes security headers', asy
     assert.ok(response.headers.has('x-content-type-options'))
 })
 
-test('public self-registration is disabled', async () => {
+test('public registration rejects invalid data before database access', async () => {
     const response = await fetch(`${baseUrl}/api/auth/register`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'New User', email: 'new@example.com', password: 'long-enough-password' }),
+        body: JSON.stringify({ name: 'New User', email: 'not-an-email', password: 'short' }),
     })
     const payload = await response.json()
 
-    assert.equal(response.status, 403)
-    assert.match(payload.error.message, /contact the system admin/i)
+    assert.equal(response.status, 400)
+    assert.match(payload.error.message, /valid email/i)
+})
+
+test('public registration rejects a body without account fields', async () => {
+    const response = await fetch(`${baseUrl}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '[]',
+    })
+    const payload = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.match(payload.error.message, /name, valid email/i)
 })
 
 test('user creation requires authentication', async () => {
