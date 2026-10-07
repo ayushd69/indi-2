@@ -45,7 +45,7 @@ ServiceDesk Pro is a MERN IT helpdesk and asset management platform. The reposit
 
 ## Demo accounts
 
-The System Admin account has dedicated credentials. All other demo accounts use `ServiceDesk!2026`:
+The sole System Admin account uses `system@gmail.com` / `system@123` when provisioned by the demo seed. For Production, use `npm --prefix backend run seed:admin` with `ADMIN_INITIAL_PASSWORD=system@123` and Vercel's Production `MONGODB_URI` to set these credentials without clearing application data. Other demo accounts use `ServiceDesk!2026`:
 
 | Role | Email |
 | --- | --- |

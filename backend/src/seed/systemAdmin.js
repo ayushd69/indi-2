@@ -32,8 +32,12 @@ async function run() {
         },
         { upsert: true, new: true, runValidators: true },
     )
+    await User.updateMany(
+        { role: 'System Admin', email: { $ne: systemAdminEmail } },
+        { $set: { role: 'Employee', title: 'Employee' } },
+    )
 
-    console.info(`System Admin account is ready for ${systemAdminEmail}.`)
+    console.info(`The sole System Admin account is ready for ${systemAdminEmail}.`)
 }
 
 run()
